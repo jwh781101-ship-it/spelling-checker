@@ -84,11 +84,12 @@
   .apikey-save:hover { transform: translateY(-1px); }
   .apikey-notice { font-size: 0.75rem; color: var(--ink-faint); margin-top: 12px; text-align: center; }
   .key-badge {
-    display: none; align-items: center; gap: 6px;
-    position: absolute; right: 20px; top: 50%; transform: translateY(-50%);
-    font-size: 0.78rem; color: var(--good);
+    display: none; align-items: center; gap: 4px;
+    position: fixed; right: 10px; top: 8px;
+    font-size: 0.68rem; color: var(--good);
     background: var(--good-bg); border: 1px solid #b7dfc9;
-    padding: 4px 12px; border-radius: 20px; cursor: pointer;
+    padding: 3px 8px; border-radius: 20px; cursor: pointer;
+    z-index: 100; white-space: nowrap;
   }
   .key-badge.show { display: flex; }
 
@@ -560,12 +561,12 @@
   </div>
 </div>
 
-<header style="position:relative;">
+<!-- API 키 설정됨 뱃지 (우측 상단 고정) -->
+<div class="key-badge" id="keyBadge" onclick="resetApiKey()" title="클릭하면 키 재설정">✅ API 키</div>
+
+<header>
   <div class="logo">바른 글씨 <span>✏️</span></div>
   <p class="tagline">맞춤법과 용례를 바르게 — 쉽고 편하게</p>
-  <div class="key-badge" id="keyBadge" onclick="resetApiKey()" title="클릭하면 키 재설정">
-    ✅ API 키 설정됨
-  </div>
 </header>
 
 <main>
@@ -627,9 +628,9 @@
 
   <!-- TIPS -->
   <div class="tips-section">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
-      <div class="tips-title" style="margin-bottom:0;">💡 오늘의 맞춤법 팁 <span style="font-size:0.75rem;color:var(--ink-faint);font-weight:400;">— 국립국어원 기준</span></div>
-      <button onclick="loadTips()" id="tipsRefreshBtn" style="font-size:0.8rem;color:var(--accent);background:none;border:1px solid var(--accent-light);border-radius:20px;padding:4px 12px;cursor:pointer;">🔄 새로 받기</button>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:14px;flex-wrap:nowrap;">
+      <div class="tips-title" style="margin-bottom:0;flex:1;min-width:0;">💡 오늘의 맞춤법 팁 <span style="font-size:0.75rem;color:var(--ink-faint);font-weight:400;">— 국립국어원 기준</span></div>
+      <button onclick="loadTips()" id="tipsRefreshBtn" style="font-size:0.8rem;color:var(--accent);background:none;border:1px solid var(--accent-light);border-radius:20px;padding:4px 12px;cursor:pointer;white-space:nowrap;flex-shrink:0;">🔄 새로 받기</button>
     </div>
     <div id="tipsBody">
       <div style="text-align:center;padding:20px;color:var(--ink-faint);font-size:0.9rem;">불러오는 중...</div>
@@ -700,6 +701,7 @@ function clearAll() {
   document.getElementById('charCount').textContent = '0자';
   document.getElementById('resultCard').classList.remove('show');
   document.getElementById('loadingCard').classList.remove('show');
+  inputEl.focus();
 }
 
 // ===== VOICE INPUT =====
