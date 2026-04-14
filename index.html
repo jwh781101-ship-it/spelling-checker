@@ -425,21 +425,13 @@ textarea::placeholder { color: var(--ink-faint); font-family: 'Noto Sans KR', sa
 </div>
 
 <script>
-// ================================================================
-// ★ API 키를 아래에 입력하세요 ★
-// console.anthropic.com 에서 발급 후 sk-ant-... 부분을 교체하세요
-// ================================================================
-const API_KEY = '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';
-// ================================================================
+const WORKER_URL = 'https://bareun-api.jwh781101.workers.dev';
 
 function callAPI(system, userMsg, maxTokens = 1000) {
-  return fetch('https://api.anthropic.com/v1/messages', {
+  return fetch(WORKER_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': API_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true'
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
