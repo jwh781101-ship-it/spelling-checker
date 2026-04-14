@@ -529,7 +529,7 @@ JSON으로만 응답. 마크다운 없이 순수 JSON:
     );
 
     const data = await res.json();
-    if (!res.ok || data.error) throw new Error(data.error?.message || `HTTP ${res.status}`);
+    if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
     const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
     showResult(JSON.parse(raw));
   } catch(e) {
