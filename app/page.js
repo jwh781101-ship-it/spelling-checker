@@ -10,6 +10,15 @@ const SYSTEM_CHECK = `당신은 국립국어원 한글 맞춤법 규정(문화�
 JSON으로만 응답. 마크다운 없이 순수 JSON:
 {"hasErrors":true,"correctedText":"교정된 전체 문장","errors":[{"wrong":"틀린표현","right":"올바른표현","type":"맞춤법|띄어쓰기|용례|표현","reason":"쉬운 설명 + 국립국어원 근거","example":"올바른 예시"}],"overallComment":"총평 1-2문장"}`;
 
+const SYSTEM_DICT = `당신은 국립국어원 표준국어대사전을 기반으로 한국어 단어를 설명하는 전문가입니다.
+입력된 단어의 사전 정보를 JSON으로만 반환하세요. 마크다운 없이 순수 JSON.
+형식:
+{"word":"단어","pronunciation":"발음(필요시)","meanings":[{"pos":"품사","definition":"뜻풀이","example":"예문"}],"synonyms":["유의어1","유의어2"],"antonyms":["반의어1"],"tip":"헷갈리기 쉬운 점이나 주의사항(있을 경우에만)"}
+- meanings는 최대 3개
+- synonyms, antonyms는 없으면 빈 배열
+- tip은 없으면 빈 문자열
+- 어르신도 이해할 수 있게 쉽게 설명`;
+
 const SYSTEM_TIPS = `국립국어원 한글 맞춤법 기준으로 맞춤법 팁을 JSON으로만 반환. 마크다운 없이 순수 JSON.
 형식: {"tips":[{"wrong":"틀린표현","right":"올바른표현","desc":"20자 이내 쉬운 설명"}]}
 규칙: 정확히 6개. 금세/오랜만에/왠지/며칠/어떡해/이따가 등 흔한 예시 절대 금지. 덜 알려진 것 위주. 매번 다른 카테고리(동사혼동/띄어쓰기/발음표기/조사어미/외래어/순우리말)에서 각 1개씩.`;
@@ -33,8 +42,10 @@ async function callAPI(system, userMsg, maxTokens = 1000) {
 
 export default function Home() {
   const [text, setText] = useState('');
+  const [mode, setMode] = useState('check'); // 'check' | 'dict'
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [dictResult, setDictResult] = useState(null);
   const [tips, setTips] = useState([]);
   const [tipsLoading, setTipsLoading] = useState(false);
   const [saved, setSaved] = useState([]);
@@ -65,18 +76,35 @@ export default function Home() {
     finally { setTipsLoading(false); }
   }
 
-  async function checkSpelling() {
-    if (!text.trim()) { alert('글을 먼저 입력해 주세요.'); return; }
-    if (text.trim().length < 2) { alert('조금 더 길게 입력해 주세요.'); return; }
-    setLoading(true); setResult(null);
+  async function checkSpellingDirect(inputText) {
+    const t = (inputText || text).trim();
+    if (!t) { alert('글을 먼저 입력해 주세요.'); return; }
+    if (t.length < 2) { alert('조금 더 길게 입력해 주세요.'); return; }
+    setLoading(true); setResult(null); setDictResult(null);
     try {
-      const data = await callAPI(SYSTEM_CHECK, `다음 글을 검사해주세요:\n\n${text}`);
+      const data = await callAPI(SYSTEM_CHECK, `다음 글을 검사해주세요:\n\n${t}`);
       const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
       setResult(JSON.parse(raw));
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch(e) { alert('오류: ' + e.message); }
     finally { setLoading(false); }
   }
+
+  async function searchDictDirect(inputText) {
+    const t = (inputText || text).trim();
+    if (!t) { alert('단어를 먼저 입력해 주세요.'); return; }
+    setLoading(true); setResult(null); setDictResult(null);
+    try {
+      const data = await callAPI(SYSTEM_DICT, `다음 단어를 찾아주세요: ${t}`);
+      const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
+      setDictResult(JSON.parse(raw));
+      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    } catch(e) { alert('오류: ' + e.message); }
+    finally { setLoading(false); }
+  }
+
+  async function checkSpelling() { await checkSpellingDirect(); }
+  async function searchDict() { await searchDictDirect(); }
 
   function clearAll() {
     setText(''); setResult(null);
@@ -148,14 +176,16 @@ export default function Home() {
         <div className="card">
           <div className="card-head">
             <span className="icon">📝</span>
-            <h2>글을 입력해 주세요</h2>
-            <span className="cnt">{text.length}자</span>
+            <h2>{mode === 'check' ? '글을 입력해 주세요' : '단어를 입력해 주세요'}</h2>
+            <button className="btn-clear-head" onClick={clearAll}>지우기</button>
           </div>
           <div className="ta-wrap">
             <textarea
               value={text}
               onChange={e => setText(e.target.value)}
-              placeholder={"여기에 글을 입력하거나 붙여넣기 하세요.\n예) 오늘 날씨가 참 맑네요. 오랫만에 산책을 나갔습니다."}
+              placeholder={mode === 'check'
+                ? "여기에 글을 입력하거나 붙여넣기 하세요.\n예) 오늘 날씨가 참 맑네요. 오랫만에 산책을 나갔습니다."
+                : "찾고 싶은 단어를 입력하세요.\n예) 설레다, 어이없다, 금세"}
               maxLength={2000}
             />
           </div>
@@ -168,8 +198,16 @@ export default function Home() {
             {isRecording && <span className="rec-status show">● 녹음 중...</span>}
           </div>
           <div className="btn-row">
-            <button className="btn-check" onClick={checkSpelling} disabled={loading}>맞춤법 검사하기</button>
-            <button className="btn-clear" onClick={clearAll}>지우기</button>
+            <button
+              className={`btn-mode${mode === 'check' ? ' active' : ''}`}
+              onClick={() => { setMode('check'); setResult(null); setDictResult(null); checkSpellingDirect(); }}
+              disabled={loading}
+            >✏️ 맞춤법</button>
+            <button
+              className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
+              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); searchDictDirect(); }}
+              disabled={loading}
+            >📖 사전</button>
           </div>
         </div>
 
@@ -226,6 +264,44 @@ export default function Home() {
               <button className={`btn-copy${copied ? ' copied' : ''}`} onClick={copyText}>
                 {copied ? '✅ 복사되었습니다!' : '📋 교정된 글 복사하기'}
               </button>
+            </div>
+          </div>
+        )}
+
+        {/* 사전 결과 */}
+        {dictResult && (
+          <div className="result-card show" ref={resultRef}>
+            <div className="score-banner has-errors" style={{background:'#e8f0fe',borderBottom:'2px solid #93b4f7'}}>
+              <span className="score-emoji">📖</span>
+              <div className="score-text">
+                <h3 style={{color:'#1a3a8f'}}>{dictResult.word}</h3>
+                {dictResult.pronunciation && <p>[ {dictResult.pronunciation} ]</p>}
+              </div>
+            </div>
+            <div className="errors-sec">
+              {dictResult.meanings?.map((m, i) => (
+                <div key={i} className="error-item" style={{animationDelay: i*0.05+'s'}}>
+                  <div className="err-num">{i+1}</div>
+                  <div className="err-body">
+                    <div className="err-words">
+                      <span className="err-type">{m.pos}</span>
+                    </div>
+                    <div className="err-reason" style={{fontWeight:600,color:'var(--ink)',marginBottom:'4px'}}>{m.definition}</div>
+                    {m.example && <div className="err-example">예) {m.example}</div>}
+                  </div>
+                </div>
+              ))}
+              {(dictResult.synonyms?.length > 0 || dictResult.antonyms?.length > 0) && (
+                <div style={{padding:'10px 4px',fontSize:'0.9rem',color:'var(--ink-light)'}}>
+                  {dictResult.synonyms?.length > 0 && <div style={{marginBottom:'4px'}}>📌 유의어: <b>{dictResult.synonyms.join(', ')}</b></div>}
+                  {dictResult.antonyms?.length > 0 && <div>🔄 반의어: <b>{dictResult.antonyms.join(', ')}</b></div>}
+                </div>
+              )}
+              {dictResult.tip && (
+                <div style={{marginTop:'8px',padding:'12px 16px',background:'#fff9e6',borderRadius:'10px',border:'1.5px solid #ffe066',fontSize:'0.9rem',color:'var(--ink-light)'}}>
+                  💡 {dictResult.tip}
+                </div>
+              )}
             </div>
           </div>
         )}
