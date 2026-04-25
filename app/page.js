@@ -11,12 +11,20 @@ JSON으로만 응답. 마크다운 없이 순수 JSON:
 {"hasErrors":true,"correctedText":"교정된 전체 문장","errors":[{"wrong":"틀린표현","right":"올바른표현","type":"맞춤법|띄어쓰기|용례|표현","reason":"쉬운 설명 + 국립국어원 근거","example":"올바른 예시"}],"overallComment":"총평 1-2문장"}`;
 
 const SYSTEM_DICT = `당신은 국립국어원 표준국어대사전을 기반으로 한국어 단어를 설명하는 전문가입니다.
+
+반드시 다음 규칙을 따르세요:
+- 표준국어대사전에 등재된 뜻만 정확하게 설명할 것
+- 임의의 사회적 판단, 도덕적 주석, 사용 권고/비권고 의견을 절대 추가하지 말 것
+- 사전에 없는 뜻을 추측하거나 만들어내지 말 것
+- 한자어는 한자 표기도 함께 제공할 것
+- 동음이의어가 있으면 모두 설명할 것
+
 입력된 단어의 사전 정보를 JSON으로만 반환하세요. 마크다운 없이 순수 JSON.
 형식:
-{"word":"단어","pronunciation":"발음(필요시)","meanings":[{"pos":"품사","definition":"뜻풀이","example":"예문"}],"synonyms":["유의어1","유의어2"],"antonyms":["반의어1"],"tip":"헷갈리기 쉬운 점이나 주의사항(있을 경우에만)"}
+{"word":"단어","hanja":"한자(있을 경우)","pronunciation":"발음(필요시)","meanings":[{"pos":"품사","definition":"표준국어대사전 기준 뜻풀이","example":"예문"}],"synonyms":["유의어1","유의어2"],"antonyms":["반의어1"],"note":"어원이나 용법 등 사전적 참고사항(있을 경우에만, 사회적 판단 절대 금지)"}
 - meanings는 최대 3개
 - synonyms, antonyms는 없으면 빈 배열
-- tip은 없으면 빈 문자열
+- note는 없으면 빈 문자열
 - 어르신도 이해할 수 있게 쉽게 설명`;
 
 const SYSTEM_TIPS = `국립국어원 한글 맞춤법 기준으로 맞춤법 팁을 JSON으로만 반환. 마크다운 없이 순수 JSON.
@@ -274,7 +282,10 @@ export default function Home() {
             <div className="score-banner has-errors" style={{background:'#e8f0fe',borderBottom:'2px solid #93b4f7'}}>
               <span className="score-emoji">📖</span>
               <div className="score-text">
-                <h3 style={{color:'#1a3a8f'}}>{dictResult.word}</h3>
+                <h3 style={{color:'#1a3a8f'}}>
+                  {dictResult.word}
+                  {dictResult.hanja && <span style={{fontSize:'0.85rem',fontWeight:500,color:'#5a7abf'}}> ({dictResult.hanja})</span>}
+                </h3>
                 {dictResult.pronunciation && <p>[ {dictResult.pronunciation} ]</p>}
               </div>
             </div>
@@ -297,9 +308,9 @@ export default function Home() {
                   {dictResult.antonyms?.length > 0 && <div>🔄 반의어: <b>{dictResult.antonyms.join(', ')}</b></div>}
                 </div>
               )}
-              {dictResult.tip && (
-                <div style={{marginTop:'8px',padding:'12px 16px',background:'#fff9e6',borderRadius:'10px',border:'1.5px solid #ffe066',fontSize:'0.9rem',color:'var(--ink-light)'}}>
-                  💡 {dictResult.tip}
+              {dictResult.note && (
+                <div style={{marginTop:'8px',padding:'12px 16px',background:'#f0f4ff',borderRadius:'10px',border:'1.5px solid #93b4f7',fontSize:'0.9rem',color:'var(--ink-light)'}}>
+                  📝 {dictResult.note}
                 </div>
               )}
             </div>
