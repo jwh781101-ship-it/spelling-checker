@@ -103,41 +103,11 @@ export default function Home() {
     if (!t) { alert('단어를 먼저 입력해 주세요.'); return; }
     setLoading(true); setResult(null); setDictResult(null);
     try {
-      // 1차: 표준국어대사전 API 직접 조회
-      const dictRes = await fetch('/api/dict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ word: t })
-      });
-      const dictData = await dictRes.json();
-
-      if (dictData.items && dictData.items.length > 0) {
-        // 표준국어대사전에서 찾은 경우 → 그대로 표시
-        const first = dictData.items[0];
-        setDictResult({
-          word: first.word,
-          hanja: first.hanja,
-          pronunciation: '',
-          meanings: first.senses.slice(0, 3).map(s => ({
-            pos: first.pos,
-            definition: s.definition,
-            example: s.example
-          })),
-          synonyms: [],
-          antonyms: [],
-          note: dictData.items.length > 1
-            ? `동음이의어 ${dictData.items.length}개가 있습니다: ${dictData.items.map(i => i.word + (i.hanja ? `(${i.hanja})` : '')).join(', ')}`
-            : '',
-          source: '표준국어대사전'
-        });
-      } else {
-        // 2차: 표준국어대사전에 없으면 Claude로 fallback
-        const data = await callAPI(SYSTEM_DICT, `다음 단어를 찾아주세요: ${t}`);
-        const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
-        const parsed = JSON.parse(raw);
-        parsed.source = 'AI';
-        setDictResult(parsed);
-      }
+      const data = await callAPI(SYSTEM_DICT, `다음 단어를 찾아주세요: ${t}`);
+      const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
+      const parsed = JSON.parse(raw);
+      parsed.searchWord = t;
+      setDictResult(parsed);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } catch(e) { alert('오류: ' + e.message); }
     finally { setLoading(false); }
@@ -319,9 +289,6 @@ export default function Home() {
                   {dictResult.hanja && <span style={{fontSize:'0.85rem',fontWeight:500,color:'#5a7abf'}}> ({dictResult.hanja})</span>}
                 </h3>
                 {dictResult.pronunciation && <p>[ {dictResult.pronunciation} ]</p>}
-                <p style={{fontSize:'0.72rem',color:'#5a7abf',marginTop:'2px'}}>
-                  {dictResult.source === '표준국어대사전' ? '📚 국립국어원 표준국어대사전' : '🤖 AI 추정 (표준국어대사전 미등재)'}
-                </p>
               </div>
             </div>
             <div className="errors-sec">
@@ -348,6 +315,16 @@ export default function Home() {
                   📝 {dictResult.note}
                 </div>
               )}
+            </div>
+            <div className="copy-row">
+              <a
+                href={`https://stdict.korean.go.kr/search/searchResult.do?searchKeyword=${encodeURIComponent(dictResult.searchWord || dictResult.word)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{display:'block',width:'100%',padding:'14px',borderRadius:'10px',border:'2px solid #3b5bdb',background:'white',color:'#3b5bdb',fontSize:'1rem',fontWeight:700,textAlign:'center',textDecoration:'none',transition:'all 0.2s'}}
+              >
+                📚 국립국어원 표준국어대사전에서 확인하기
+              </a>
             </div>
           </div>
         )}
