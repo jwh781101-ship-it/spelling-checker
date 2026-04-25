@@ -4,7 +4,7 @@ export async function POST(request) {
     if (!word) return Response.json({ error: '단어를 입력해 주세요.' }, { status: 400 });
 
     const apiKey = process.env.KOREAN_DICT_API_KEY;
-    const url = `https://stdict.korean.go.kr/api/search.do?key=${apiKey}&q=${encodeURIComponent(word)}&type_search=search&part=word&num=5&pos=0&advanced=n&method=exact`;
+    const url = `https://stdict.korean.go.kr/api/search.do?key=${apiKey}&q=${encodeURIComponent(word)}&type_search=search&part=word&num=5&method=exact`;
 
     const res = await fetch(url);
     const text = await res.text();
