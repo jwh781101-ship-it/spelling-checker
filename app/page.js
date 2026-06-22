@@ -54,7 +54,7 @@ async function callAPI(system, userMsg, maxTokens = 1000) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: maxTokens,
       system,
       messages: [{ role: 'user', content: userMsg }]
@@ -106,6 +106,7 @@ export default function Home() {
     setLoading(true); setResult(null); setDictResult(null);
     try {
       const data = await callAPI(SYSTEM_CHECK, `다음 글을 검사해주세요:\n\n${t}`);
+      if (!data?.content?.[0]?.text) throw new Error(data?.error?.message || 'API 응답 오류');
       const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
       setResult(JSON.parse(raw));
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
@@ -119,6 +120,7 @@ export default function Home() {
     setLoading(true); setResult(null); setDictResult(null);
     try {
       const data = await callAPI(SYSTEM_DICT, `다음 단어를 찾아주세요: ${t}`);
+      if (!data?.content?.[0]?.text) throw new Error(data?.error?.message || 'API 응답 오류');
       const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
       const parsed = JSON.parse(raw);
       parsed.searchWord = t;
