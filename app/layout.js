@@ -16,7 +16,6 @@ export const viewport = {
   themeColor: '#6b3d18',
   width: 'device-width',
   initialScale: 1,
-  maximumScale: 1,
 };
 
 export default function RootLayout({ children }) {
@@ -32,7 +31,7 @@ export default function RootLayout({ children }) {
         <script dangerouslySetInnerHTML={{__html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-              navigator.serviceWorker.register('/sw.js');
+              navigator.serviceWorker.register('/jw.js');
             });
           }
         `}} />

@@ -1,66 +1,159 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
+import { tipsFor } from './data/tips';
 
-const SYSTEM_CHECK = `당신은 국립국어원 한글 맞춤법 규정(문화체육관광부 고시 제2017-12호)을 기준으로 맞춤법을 검사하는 전문가입니다.
-핵심 규정:
-[총칙] 제1항: 표준어를 소리대로 적되 어법에 맞도록 함. 제2항: 각 단어는 띄어 씀.
-[두음법칙] 녀→여, 뇨→요, 년→연 등
-[띄어쓰기] 조사는 붙여쓰기, 의존명사·보조용언은 띄어쓰기
-[혼동표현] 오랫만에→오랜만에, 왠지O/웬지X, 어떡해O/어떻해X, 며칠O/몇일X, 금세O/금새X, 이따가O/있다가X, 안 돼O/안 되X, 어이없다O/어의없다X, 설레다O/설레이다X
+// 원문에서 틀린 표현 주변 문장 잘라 오기 (검증할 때 문맥으로 씀)
+function contextOf(original, wrong) {
+  const i = original.indexOf(wrong);
+  if (i < 0) return '';
+  return original.slice(Math.max(0, i - 40), i + wrong.length + 40);
+}
 
-[띄어쓰기 핵심 원칙 - 반드시 준수]
-- 명사 + 없다/있다: 반드시 띄어 씀 (걱정 없는O 걱정없는X / 문제 없다O 문제없다X / 관심 있는O 관심있는X)
-- 명사 + 형용사: 반드시 띄어 씀 (키 크다O 키크다X)
-- 단, 사전에 한 단어로 등재된 합성어는 붙여 씀 (괜찮다/부질없다/하잖다 등은 합성어로 붙여 씀)
-- 보조용언(보조형용사 포함): 띄어 씀 원칙 (먹어 보다 / 알 수 없다)
-- '못하다'는 한 단어로 붙여 씀, '잘 하다'는 띄어 씀
+async function fetchRules(refs) {
+  try {
+    const res = await fetch('/api/rules', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refs })
+    });
+    const data = await res.json();
+    return data.rules || [];
+  } catch { return []; }
+}
 
-중요 규칙:
-- correctedText는 반드시 모든 오류가 실제로 수정된 완성된 문장이어야 함
-- errors의 wrong은 원문에서 틀린 표현 그대로, right는 correctedText에 실제로 반영된 올바른 표현
-- wrong과 right가 다를 때만 errors에 포함할 것 (같으면 제외)
-- correctedText에서 wrong을 right로 반드시 교체할 것
-- 한 번 판단한 규정은 일관되게 적용할 것 (같은 표현에 대해 이랬다저랬다 하지 말 것)
+const plainTxt = s => String(s || '').replace(/[\s‘’'"“”.,-]/g, '');
 
-JSON으로만 응답. 마크다운 없이 순수 JSON:
-{"hasErrors":true,"correctedText":"교정된 전체 문장(모든 오류 실제 수정됨)","errors":[{"wrong":"틀린표현","right":"올바른표현","type":"맞춤법|띄어쓰기|용례|표현","reason":"쉬운 설명 + 국립국어원 근거","example":"올바른 예시"}],"overallComment":"총평 1-2문장"}`;
+// 국립국어원 한국어 어문 규범 조항 안내
+function RuleBox({ rule, quote, pending }) {
+  if (!rule) return null;
+  return (
+    <div className="rbox">
+      <div className="rbox-head">
+        📘 {rule.title}
+        <span className="rbox-chap">{rule.chapter}</span>
+        {pending && <span className="rbox-pending">{pending === 'nikl' ? 'AI가 고른 조항 · 확인 중' : 'AI가 고른 조항'}</span>}
+      </div>
+      <div className="rbox-stmt">{rule.statement}</div>
+      {rule.examples && <div className="rbox-ex">{rule.examples}</div>}
+      {quote && plainTxt(quote) !== plainTxt(rule.statement) && <div className="rbox-quote">“{quote}”</div>}
+      <a className="rbox-link" href={rule.url} target="_blank" rel="noopener noreferrer">
+        규정 원문과 해설 보기 (국립국어원 한국어 어문 규범) →
+      </a>
+    </div>
+  );
+}
 
-const SYSTEM_DICT = `당신은 국립국어원 표준국어대사전을 기반으로 한국어 단어를 설명하는 전문가입니다.
+async function callVerify(stage, items) {
+  const res = await fetch('/api/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ stage, items })
+  });
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data.items || [];
+}
 
-반드시 다음 규칙을 따르세요:
-- 표준국어대사전에 등재된 뜻만 정확하게 설명할 것
-- 임의의 사회적 판단, 도덕적 주석, 사용 권고/비권고 의견을 절대 추가하지 말 것
-- 사전에 없는 뜻을 추측하거나 만들어내지 말 것
-- 한자어는 한자 표기도 함께 제공할 것
-- 동음이의어가 있으면 모두 설명할 것
+// 한 번에 너무 많이 보내면 서버가 10개까지만 보므로 6개씩 나눠 동시에 확인
+async function verifyInBatches(stage, items) {
+  const batches = [];
+  for (let i = 0; i < items.length; i += 6) batches.push(items.slice(i, i + 6));
+  const results = await Promise.all(batches.map(b => callVerify(stage, b).catch(() => [])));
+  const flat = results.flat();
+  if (!flat.length && items.length) throw new Error('verify-failed');
+  return flat;
+}
 
-입력된 단어의 사전 정보를 JSON으로만 반환하세요. 마크다운 없이 순수 JSON.
-형식:
-{"word":"단어","hanja":"한자(있을 경우)","pronunciation":"발음(필요시)","meanings":[{"pos":"품사","definition":"표준국어대사전 기준 뜻풀이","example":"예문"}],"synonyms":["유의어1","유의어2"],"antonyms":["반의어1"],"note":"어원이나 용법 등 사전적 참고사항(있을 경우에만, 사회적 판단 절대 금지)"}
-- meanings는 최대 3개
-- synonyms, antonyms는 없으면 빈 배열
-- note는 없으면 빈 문자열
-- 어르신도 이해할 수 있게 쉽게 설명`;
+const VERDICT_TEXT = {
+  nikl: { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ AI 교정이 틀려서 국립국어원 기준으로 바꿨어요', '부분': '🔸 일부만 맞아서 국립국어원 기준으로 다듬었어요', '둘다가능': '🟰 둘 다 맞는 표현이에요 (원래 쓰신 대로 두었어요)' },
+  web:  { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ 웹 자료로는 AI 교정이 틀릴 수 있어요', '부분': '🔸 웹 자료로는 일부만 맞아요', '둘다가능': '🟰 웹 자료로는 둘 다 쓸 수 있어요' },
+};
 
-const SYSTEM_TIPS = `국립국어원 한글 맞춤법 기준으로 맞춤법 팁을 JSON으로만 반환. 마크다운 없이 순수 JSON.
-형식: {"tips":[{"wrong":"틀린표현","right":"올바른표현","desc":"20자 이내 쉬운 설명"}]}
-규칙: 정확히 6개. 금세/오랜만에/왠지/며칠/어떡해/이따가 등 흔한 예시 절대 금지. 덜 알려진 것 위주. 매번 다른 카테고리(동사혼동/띄어쓰기/발음표기/조사어미/외래어/순우리말)에서 각 1개씩.`;
+function VerifyBox({ v, stage }) {
+  const waitingWeb = stage === 'web' && (!v || v.source === 'none');
+  if (stage === 'nikl' && !v) return <div className="vbox vbox-wait">🏛️ 국립국어원 자료를 찾고 있어요...</div>;
+  if (waitingWeb) return <div className="vbox vbox-wait">🔎 국립국어원 자료가 없어서 웹에서 찾고 있어요...</div>;
+  if (!v) {
+    if (stage === 'error') return <div className="vbox vbox-none">⚠️ 자료 확인 중 문제가 생겼어요. AI 판단만 보여 드려요.</div>;
+    return null;
+  }
+  if (v.source === 'none') {
+    return <div className="vbox vbox-none">❔ 국립국어원·웹 자료에서 근거를 찾지 못했어요. AI 판단만으로 고친 항목이에요.</div>;
+  }
+  const isNikl = v.source === 'nikl';
+  return (
+    <div className={`vbox ${isNikl ? 'vbox-nikl' : 'vbox-web'}`}>
+      <div className="vbox-head">
+        {isNikl ? '🏛️ 국립국어원 공식 자료' : '🔎 국립국어원 자료 없음 · AI 웹 검색 결과 (참고용)'}
+      </div>
+      {VERDICT_TEXT[v.source]?.[v.verdict] && <div className="vbox-verdict">{VERDICT_TEXT[v.source][v.verdict]}</div>}
+      {v.explain && <div className="vbox-explain">{v.explain}</div>}
+      {v.sources?.map((s, k) => (
+        <a key={k} className="vbox-src" href={s.url} target="_blank" rel="noopener noreferrer">
+          📎 {s.title || s.url}
+          {s.quote && <span className="vbox-quote">“{s.quote}”</span>}
+        </a>
+      ))}
+    </div>
+  );
+}
 
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 function escRx(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
 
-async function callAPI(system, userMsg, maxTokens = 1000) {
-  const res = await fetch('/api/check', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
-      max_tokens: maxTokens,
-      system,
-      messages: [{ role: 'user', content: userMsg }]
-    })
-  });
-  return res.json();
+// AI 답에서 JSON만 꺼내기 (앞뒤에 설명이나 코드블록 표시가 붙어도 괜찮게)
+function parseJSON(text) {
+  const s = String(text || '');
+  const a = s.indexOf('{'), b = s.lastIndexOf('}');
+  if (a < 0 || b <= a) throw new Error('bad-json');
+  return JSON.parse(s.slice(a, b + 1));
+}
+
+// 서버에 맞춤법 검사 / 사전 찾기 요청 (실패하면 한 번 더 시도)
+async function callAI(mode, text) {
+  let lastErr;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch('/api/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, text })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
+      return parseJSON(data.text);
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+
+// 긴 글은 문단·문장 단위로 나눠서 검사 (한 번에 너무 길면 AI 답이 잘림)
+const CHUNK = 500;
+function splitText(t) {
+  const parts = [];
+  for (const seg of t.split(/(\n+)/)) {
+    if (seg.length <= CHUNK) { parts.push(seg); continue; }
+    const sentences = seg.match(/[^.!?。]+[.!?。]+[\s"'”’)]*|[^.!?。]+$/g) || [seg];
+    for (const s of sentences) {
+      if (s.length <= CHUNK) parts.push(s);
+      else for (let i = 0; i < s.length; i += CHUNK) parts.push(s.slice(i, i + CHUNK));
+    }
+  }
+  const chunks = [];
+  let cur = '';
+  for (const p of parts) {
+    if (cur && (cur + p).length > CHUNK) { chunks.push(cur); cur = ''; }
+    cur += p;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
+function friendlyError(e) {
+  const m = String(e?.message || e || '');
+  if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return '인터넷 연결이 불안정해요. 와이파이나 데이터를 확인한 뒤 다시 눌러 주세요.';
+  if (/overloaded|529|rate|429/i.test(m)) return '지금 사용하는 사람이 많아요. 잠시 뒤에 다시 눌러 주세요.';
+  return '잠깐 문제가 생겼어요. 아래 버튼으로 다시 해 보세요.';
 }
 
 export default function Home() {
@@ -70,63 +163,160 @@ export default function Home() {
   const [result, setResult] = useState(null);
   const [dictResult, setDictResult] = useState(null);
   const [tips, setTips] = useState([]);
-  const [tipsLoading, setTipsLoading] = useState(false);
   const [saved, setSaved] = useState([]);
   const [copied, setCopied] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [fontScale, setFontScale] = useState(0);
+  const [tipPage, setTipPage] = useState(0);
+  const [errorMsg, setErrorMsg] = useState(null); // { text, retry }
+  const [progress, setProgress] = useState(''); // 긴 글 검사 진행 상황
+  const [canShare, setCanShare] = useState(false);
+  const fontLoadedRef = useRef(false);
+  const [verify, setVerify] = useState({});       // 항목별 검증 결과 { id: {...} }
+  const [verifyStage, setVerifyStage] = useState(''); // '' | 'nikl' | 'web' | 'done' | 'error'
+  const [aiRules, setAiRules] = useState([]);     // AI가 근거로 든 조항 (어문 규범 원문)
+  const verifyRunRef = useRef(0);
   const recognitionRef = useRef(null);
   const resultRef = useRef(null);
 
   useEffect(() => {
     const s = localStorage.getItem('bareun_saved');
-    if (s) setSaved(JSON.parse(s));
-    loadTips();
+    try { if (s) setSaved(JSON.parse(s)); } catch { /* 저장 내용이 깨졌으면 무시 */ }
+    const f = Number(localStorage.getItem('bareun_font'));
+    if (f >= -2 && f <= 4) setFontScale(f);
+    fontLoadedRef.current = true;
+    setTips(tipsFor(0));
+    setCanShare(typeof navigator !== 'undefined' && !!navigator.share);
   }, []);
 
   useEffect(() => {
     document.documentElement.style.fontSize = (18 + fontScale * 2) + 'px';
+    if (fontLoadedRef.current) localStorage.setItem('bareun_font', String(fontScale));
   }, [fontScale]);
 
-  async function loadTips() {
-    setTipsLoading(true);
-    try {
-      const data = await callAPI(SYSTEM_TIPS,
-        `시드: ${Date.now() + Math.floor(Math.random()*99999)}. 6가지 카테고리에서 각 1개씩, 흔하지 않은 팁 6개 주세요.`, 600);
-      const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
-      setTips(JSON.parse(raw).tips);
-    } catch(e) { setTips([]); }
-    finally { setTipsLoading(false); }
+  function loadTips() {
+    const next = tipPage + 1;
+    setTipPage(next);
+    setTips(tipsFor(next));
   }
 
   async function checkSpellingDirect(inputText) {
     const t = (inputText || text).trim();
-    if (!t) { alert('글을 먼저 입력해 주세요.'); return; }
-    if (t.length < 2) { alert('조금 더 길게 입력해 주세요.'); return; }
+    setErrorMsg(null);
+    if (!t) { setErrorMsg({ text: '글을 먼저 입력해 주세요.' }); return; }
+    if (t.length < 2) { setErrorMsg({ text: '조금 더 길게 입력해 주세요.' }); return; }
     setLoading(true); setResult(null); setDictResult(null);
     try {
-      const data = await callAPI(SYSTEM_CHECK, `다음 글을 검사해주세요:\n\n${t}`);
-      if (!data?.content?.[0]?.text) throw new Error(data?.error?.message || 'API 응답 오류');
-      const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
-      setResult(JSON.parse(raw));
+      const chunks = splitText(t);
+      let done = 0;
+      setProgress(chunks.length > 1 ? `글이 길어서 ${chunks.length}부분으로 나눠 살펴보고 있어요 (0/${chunks.length})` : '');
+      const parts = await Promise.all(chunks.map(async (c) => {
+        const lead = c.match(/^\s*/)[0], trail = c.match(/\s*$/)[0];
+        const body = c.trim();
+        if (body.length < 2) return { correctedText: c, errors: [] };
+        const r = await callAI('check', body);
+        done++;
+        if (chunks.length > 1) setProgress(`글이 길어서 ${chunks.length}부분으로 나눠 살펴보고 있어요 (${done}/${chunks.length})`);
+        return { ...r, correctedText: lead + String(r.correctedText || body).trim() + trail };
+      }));
+      const seen = new Set();
+      const errors = [];
+      for (const p of parts) for (const e of (p.errors || [])) {
+        if (!e || !e.wrong || !e.right || e.wrong === e.right) continue;
+        const k = e.wrong + '→' + e.right;
+        if (seen.has(k)) continue;
+        seen.add(k); errors.push(e);
+      }
+      const comments = parts.map(p => p.overallComment).filter(Boolean);
+      // 나눠 검사하면 한쪽에서만 고친 낱말이 생길 수 있어서, 찾은 오류를 글 전체에 똑같이 반영
+      let merged = parts.map(p => p.correctedText).join('');
+      if (chunks.length > 1) {
+        for (const e of errors) {
+          if (e.wrong.length >= 2 && !e.right.includes(e.wrong)) merged = merged.split(e.wrong).join(e.right);
+        }
+      }
+      const parsed = {
+        hasErrors: errors.length > 0,
+        correctedText: merged,
+        errors,
+        overallComment: errors.length === 0 ? (comments[0] || '고칠 곳이 없는 바른 글입니다.') : (chunks.length > 1 ? `전체 글에서 ${errors.length}곳을 찾았어요.` : (comments[0] || '')),
+      };
+      setResult(parsed);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    } catch(e) { alert('오류: ' + e.message); }
-    finally { setLoading(false); }
+      setLoading(false); setProgress('');
+      runVerify(t, parsed); // 국립국어원 자료로 한 번 더 확인 (기다리지 않고 뒤에서 진행)
+    } catch(e) {
+      setErrorMsg({ text: friendlyError(e), retry: 'check' });
+    }
+    finally { setLoading(false); setProgress(''); }
+  }
+
+  // 1단계: 국립국어원 자료 검색 → 2단계: 못 찾은 것만 웹 검색
+  async function runVerify(original, parsed) {
+    const errs = parsed?.errors || [];
+    const runId = Date.now();
+    verifyRunRef.current = runId;
+    setVerify({});
+    setAiRules([]);
+    if (!errs.length) { setVerifyStage(''); return; }
+    // AI가 든 조항의 원문을 먼저 바로 보여 줌
+    fetchRules(errs.map(e => e.rule || '')).then(r => { if (verifyRunRef.current === runId) setAiRules(r); });
+    const items = errs.map((e, i) => ({ id: i, wrong: e.wrong, right: e.right, rule: e.rule || '', context: contextOf(original, e.wrong) }));
+    const map = {};
+    setVerifyStage('nikl');
+    try {
+      const r1 = await verifyInBatches('nikl', items);
+      if (verifyRunRef.current !== runId) return;
+      r1.forEach(v => { map[v.id] = v; });
+      applyOfficial(r1);
+      setVerify({ ...map });
+
+      const rest = items.filter(it => !map[it.id] || map[it.id].source === 'none');
+      if (rest.length) {
+        setVerifyStage('web');
+        try {
+          const r2 = await verifyInBatches('web', rest);
+          if (verifyRunRef.current !== runId) return;
+          r2.forEach(v => { map[v.id] = v; });
+          setVerify({ ...map });
+        } catch (e) { /* 웹 검색 실패 시 '못 찾음'으로 둠 */ }
+      }
+      if (verifyRunRef.current === runId) setVerifyStage('done');
+    } catch (e) {
+      if (verifyRunRef.current === runId) setVerifyStage('error');
+    }
+  }
+
+  // 국립국어원 자료가 AI 교정과 다르면 교정된 글을 국립국어원 기준으로 바꿈
+  function applyOfficial(list) {
+    setResult(prev => {
+      if (!prev) return prev;
+      let txt = prev.correctedText;
+      const errors = (prev.errors || []).map((err, i) => {
+        const v = list.find(x => x.id === i);
+        if (!v || v.source !== 'nikl' || !v.officialRight || v.officialRight === err.right) return err;
+        if (txt.includes(err.right)) txt = txt.replace(err.right, v.officialRight);
+        return { ...err, aiRight: err.right, aiReason: err.reason, reason: v.explain || err.reason, example: '', right: v.officialRight, keptOriginal: v.officialRight === err.wrong, bothOk: v.verdict === '둘다가능' };
+      });
+      const realCount = errors.filter(e => !e.keptOriginal).length;
+      return { ...prev, correctedText: txt, errors, hasErrors: realCount > 0 };
+    });
   }
 
   async function searchDictDirect(inputText) {
     const t = (inputText || text).trim();
-    if (!t) { alert('단어를 먼저 입력해 주세요.'); return; }
+    setErrorMsg(null);
+    if (!t) { setErrorMsg({ text: '찾을 단어를 먼저 입력해 주세요.' }); return; }
+    if (t.length > 30) { setErrorMsg({ text: '사전은 단어 하나만 찾을 수 있어요. 단어만 남기고 다시 눌러 주세요. (글 검사는 ✏️ 맞춤법 버튼)' }); return; }
     setLoading(true); setResult(null); setDictResult(null);
     try {
-      const data = await callAPI(SYSTEM_DICT, `다음 단어를 찾아주세요: ${t}`);
-      if (!data?.content?.[0]?.text) throw new Error(data?.error?.message || 'API 응답 오류');
-      const raw = data.content[0].text.replace(/```json\n?|```/g, '').trim();
-      const parsed = JSON.parse(raw);
+      const parsed = await callAI('dict', t);
       parsed.searchWord = t;
       setDictResult(parsed);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    } catch(e) { alert('오류: ' + e.message); }
+    } catch(e) {
+      setErrorMsg({ text: friendlyError(e), retry: 'dict' });
+    }
     finally { setLoading(false); }
   }
 
@@ -134,12 +324,13 @@ export default function Home() {
   async function searchDict() { await searchDictDirect(); }
 
   function clearAll() {
-    setText(''); setResult(null);
+    verifyRunRef.current = 0; setVerify({}); setVerifyStage(''); setAiRules([]);
+    setText(''); setResult(null); setDictResult(null); setErrorMsg(null);
   }
 
   function toggleVoice() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      alert('음성 입력은 Chrome/Safari에서 지원됩니다.'); return;
+      setErrorMsg({ text: '이 브라우저에서는 음성 입력이 안 돼요. 크롬이나 사파리에서 열어 주세요.' }); return;
     }
     if (isRecording) { recognitionRef.current?.stop(); return; }
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -150,7 +341,7 @@ export default function Home() {
       let final = '';
       for (let i = e.resultIndex; i < e.results.length; i++)
         if (e.results[i].isFinal) final += e.results[i][0].transcript;
-      if (final) setText(prev => prev + final);
+      if (final) setText(prev => (prev && !/\s$/.test(prev) ? prev + ' ' : prev) + final.trim());
     };
     rec.onend = () => setIsRecording(false);
     rec.onerror = () => rec.stop();
@@ -163,7 +354,13 @@ export default function Home() {
     navigator.clipboard.writeText(result.correctedText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(() => setErrorMsg({ text: '복사가 안 됐어요. 교정된 글을 길게 눌러서 복사해 주세요.' }));
+  }
+
+  // 휴대폰 공유창(카카오톡, 문자 등)으로 바로 보내기
+  function shareText() {
+    if (!result || !navigator.share) return;
+    navigator.share({ text: result.correctedText }).catch(() => {});
   }
 
   function isItemSaved(wrong, right) {
@@ -196,6 +393,11 @@ export default function Home() {
       <header>
         <div className="logo">바른 글씨 ✏️</div>
         <p className="tagline">맞춤법과 용례를 바르게 — 쉽고 편하게</p>
+        <div className="font-ctrl">
+          <span className="font-lbl">글자 크기</span>
+          <button className="font-btn" aria-label="글자 작게" onClick={() => setFontScale(s => Math.max(-2, s-1))} disabled={fontScale <= -2}>가-</button>
+          <button className="font-btn" aria-label="글자 크게" onClick={() => setFontScale(s => Math.min(4, s+1))} disabled={fontScale >= 4}>가+</button>
+        </div>
       </header>
 
       <main>
@@ -227,12 +429,12 @@ export default function Home() {
           <div className="btn-row">
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
-              onClick={() => { setMode('check'); setResult(null); setDictResult(null); checkSpellingDirect(); }}
+              onClick={() => { setMode('check'); setResult(null); setDictResult(null); verifyRunRef.current = 0; setVerify({}); setVerifyStage(''); checkSpellingDirect(); }}
               disabled={loading}
             >✏️ 맞춤법</button>
             <button
               className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
-              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); searchDictDirect(); }}
+              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current = 0; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
               disabled={loading}
             >📖 사전</button>
           </div>
@@ -242,7 +444,20 @@ export default function Home() {
         {loading && (
           <div className="loading-card show">
             <div className="spinner"></div>
-            <p className="loading-text">글을 꼼꼼히 살펴보고 있습니다...</p>
+            <p className="loading-text">{mode === 'dict' ? '사전을 찾고 있습니다...' : '글을 꼼꼼히 살펴보고 있습니다...'}</p>
+            <p className="loading-hint">{progress || '보통 10~20초 걸려요. 잠시만 기다려 주세요.'}</p>
+          </div>
+        )}
+
+        {/* 안내·오류 메시지 (알림창 대신 화면에 표시) */}
+        {errorMsg && !loading && (
+          <div className="notice-card" role="alert">
+            <p>⚠️ {errorMsg.text}</p>
+            {errorMsg.retry && (
+              <button className="btn-retry" onClick={() => errorMsg.retry === 'dict' ? searchDictDirect() : checkSpellingDirect()}>
+                🔄 다시 해 보기
+              </button>
+            )}
           </div>
         )}
 
@@ -252,19 +467,33 @@ export default function Home() {
             <div className={`score-banner ${result.hasErrors ? 'has-errors' : 'perfect'}`}>
               <span className="score-emoji">{result.hasErrors ? '📌' : '🎉'}</span>
               <div className="score-text">
-                <h3>{result.hasErrors ? `${result.errors.length}곳을 고쳐드렸어요` : '완벽합니다!'}</h3>
+                <h3>{result.hasErrors ? `${result.errors.filter(e => !e.keptOriginal).length}곳을 고쳐드렸어요` : '완벽합니다!'}</h3>
                 <p>{result.overallComment}</p>
               </div>
             </div>
+            {verifyStage && verifyStage !== 'done' && verifyStage !== 'error' && (
+              <div className="verify-status">
+                <div className="spinner small"></div>
+                {verifyStage === 'nikl'
+                  ? '국립국어원 자료로 한 번 더 확인하고 있어요 (30초쯤 걸려요)'
+                  : '국립국어원에 없는 항목은 웹에서 찾고 있어요'}
+              </div>
+            )}
+            {verifyStage === 'done' && (
+              <div className="verify-status done">
+                ✔ 확인 끝: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 · 근거 못 찾음 {Object.values(verify).filter(v => v.source === 'none').length}개
+              </div>
+            )}
             <div className="corrected-sec">
               <div className="sec-label">교정된 글</div>
               <div className="corrected-text" dangerouslySetInnerHTML={{
                 __html: (() => {
-                  let txt = result.correctedText;
+                  let txt = esc(result.correctedText || '');
                   (result.errors || []).forEach(e => {
                     // correctedText에 right가 있으면 하이라이트
-                    if (e.right && txt.includes(e.right)) {
-                      txt = txt.replace(new RegExp(escRx(e.right), 'g'), `<mark>${e.right}</mark>`);
+                    const r = esc(e.right || '');
+                    if (r && !e.keptOriginal && txt.includes(r)) {
+                      txt = txt.replace(new RegExp(escRx(r), 'g'), `<mark>${r}</mark>`);
                     }
                   });
                   return txt;
@@ -284,8 +513,21 @@ export default function Home() {
                         <span className="word-right">{err.right}</span>
                         <span className="err-type">{err.type}</span>
                       </div>
-                      <div className="err-reason">{err.reason}</div>
-                      {err.example && <div className="err-example">예) {err.example}</div>}
+                      {err.aiRight && (
+                        <div className="err-override">
+                          {err.bothOk
+                            ? `국립국어원 자료에 따르면 '${err.wrong}', '${err.aiRight}' 둘 다 쓸 수 있어요. 원래 쓰신 대로 두었어요.`
+                            : err.keptOriginal
+                            ? `원래 쓰신 '${err.wrong}'이(가) 맞아요. (처음 AI는 '${err.aiRight}'(으)로 고쳤지만 국립국어원 기준과 달라 되돌렸어요)`
+                            : `처음 AI는 '${err.aiRight}'(으)로 고쳤지만 국립국어원 기준에 맞춰 '${err.right}'(으)로 바꿨어요.`}
+                        </div>
+                      )}
+                      {!err.aiRight && <div className="err-reason">{err.reason}</div>}
+                      {!err.aiRight && err.example && <div className="err-example">예) {err.example}</div>}
+                      {verify[i]
+                        ? (verify[i].source === 'nikl' && <RuleBox rule={verify[i].rule} quote={verify[i].ruleQuote} />)
+                        : <RuleBox rule={aiRules[i]} pending={verifyStage === 'nikl' ? 'nikl' : 'ai'} />}
+                      <VerifyBox v={verify[i]} stage={verifyStage} />
                     </div>
                     <button className="btn-star" onClick={() => toggleSave(err)}>
                       {isItemSaved(err.wrong, err.right) ? '⭐' : '☆'}
@@ -298,6 +540,9 @@ export default function Home() {
               <button className={`btn-copy${copied ? ' copied' : ''}`} onClick={copyText}>
                 {copied ? '✅ 복사되었습니다!' : '📋 교정된 글 복사하기'}
               </button>
+              {canShare && (
+                <button className="btn-share" onClick={shareText}>💬 카톡·문자로 보내기</button>
+              )}
             </div>
           </div>
         )}
@@ -387,26 +632,18 @@ export default function Home() {
         <div className="tips-card">
           <div className="tips-head">
             <div className="tips-title">💡 오늘의 맞춤법 팁 <span>— 국립국어원 기준</span></div>
-            <button className="btn-refresh" onClick={loadTips} disabled={tipsLoading}>🔄 새로 받기</button>
+            <button className="btn-refresh" onClick={loadTips}>🔄 다른 팁 보기</button>
           </div>
-          {tipsLoading ? (
-            <div style={{textAlign:'center',padding:'16px',color:'var(--ink-faint)'}}>✨ 불러오는 중...</div>
-          ) : tips.map((t, i) => (
+          {tips.map((t, i) => (
             <div key={i} className="tip-item">
               <span className="tip-dot">◆</span>
               <span><b>{t.wrong} → {t.right}</b> &nbsp;{t.desc}</span>
             </div>
           ))}
-          <p className="tips-src">출처: 국립국어원 한글 맞춤법(문화체육관광부 고시 제2017-12호)</p>
+          <p className="tips-src">출처: 국립국어원 한글 맞춤법(문화체육관광부 고시 제2017-12호)·표준어 규정·표준국어대사전</p>
         </div>
       </main>
 
-      {/* 글자 크기 */}
-      <div className="font-ctrl">
-        <button className="font-btn" onClick={() => setFontScale(s => Math.min(4, s+1))}>가+</button>
-        <span className="font-lbl">글자</span>
-        <button className="font-btn" onClick={() => setFontScale(s => Math.max(-2, s-1))}>가-</button>
-      </div>
     </>
   );
 }
