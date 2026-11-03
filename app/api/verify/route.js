@@ -15,7 +15,8 @@ const OUTPUT_FORMAT = `최종 답은 아래 JSON만 출력하세요. 마크다�
 - verdict 뜻: 일치=AI 교정이 자료와 같음 / AI교정틀림=자료에 따르면 AI 교정이 틀림 / 부분=일부만 맞음 / 둘다가능=자료에 따르면 뜻이나 문맥에 따라 원래 표현(wrong)도 맞을 수 있음 / 확인불가=자료 못 찾음
 - verdict는 고친 표현(right)이 맞는지만 보고 정할 것. AI가 조항 번호를 잘못 골랐더라도 표현이 맞으면 "일치" (조항 선택 여부는 explain에 쓰지 말고 ruleId로만 바로잡을 것)
 - 둘다가능이면 officialRight에 wrong을 그대로 적고, explain에 언제 붙이고 언제 띄는지 등 구분법을 쉬운 말로 쓸 것
-- officialRight: 자료에 따른 올바른 표현. 원래 쓴 표현(wrong)이 맞다면 wrong을 그대로 적을 것
+- officialRight: 자료에 따른 올바른 표현 하나만 (슬래시·'또는'으로 여러 개를 적지 말 것, 교정된 글에 그대로 들어감). 원래 쓴 표현(wrong)이 맞다면 wrong을 그대로 적을 것
+- AI가 고친 표현(right)이 맞으면 다른 맞는 표현이 더 있더라도 verdict는 "일치", officialRight는 right 그대로
 - 자료는 끝까지 읽고 판단할 것 ('다만', '참고로', '허용' 뒤에 붙는 예외를 놓치지 말 것)
 - sources의 url은 검색 결과에 실제로 나온 주소만 쓸 것 (지어내지 말 것). 검색을 안 했으면 빈 배열
 - 모든 id에 대해 빠짐없이 답할 것`;
@@ -147,12 +148,20 @@ export async function POST(request) {
       const rule = ruleId ? publicRule(getRule(ruleId)) : null;
       const ruleQuote = rule && quoteInRule(ruleId, r.ruleQuote) ? r.ruleQuote : '';
       const found = !!r.found && (sources.length > 0 || !!rule);
+      // 고친 표현이 자료와 같으면 '일치'로 바로잡기 (조항만 달랐던 경우 등)
+      // '가 / 나', '가 또는 나'처럼 여러 개를 적었으면 하나만 골라 교정된 글이 이상해지지 않게
+      const same = (a, b) => String(a || '').replace(/\s/g, '') === String(b || '').replace(/\s/g, '');
+      let official = String(r.officialRight || '').trim();
+      let verdict = r.verdict || '일치';
+      const alts = official.split(/\s*(?:\/|·|,|\s또는\s)\s*/).map(s => s.trim()).filter(Boolean);
+      if (alts.length > 1) official = alts.find(a => same(a, it.right)) || alts.find(a => same(a, it.wrong)) || alts[0];
+      if (verdict !== '둘다가능' && same(official, it.right)) { verdict = '일치'; official = it.right; }
       return {
         id: it.id,
         source: found ? (isNikl ? 'nikl' : 'web') : 'none',
         found,
-        verdict: found ? (r.verdict || '일치') : '확인불가',
-        officialRight: !found ? it.right : (r.verdict === '둘다가능' ? it.wrong : (r.officialRight || it.right)),
+        verdict: found ? verdict : '확인불가',
+        officialRight: !found ? it.right : (verdict === '둘다가능' ? it.wrong : (official || it.right)),
         explain: r.explain || '',
         rule,
         ruleQuote,
