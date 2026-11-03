@@ -91,9 +91,6 @@ textarea::placeholder { color: var(--ink-faint); font-family: 'Noto Sans KR', sa
 .tip-item { display: flex; gap: 8px; font-size: 0.92rem; color: var(--ink-light); margin-bottom: 10px; line-height: 1.7; font-weight: 500; }
 .tip-dot { color: var(--accent); flex-shrink: 0; margin-top: 2px; font-weight: 700; }
 .tips-src { font-size: 0.72rem; color: var(--ink-faint); margin-top: 10px; font-weight: 500; }
-.font-ctrl { position: fixed; bottom: 24px; right: 16px; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 100; }
-.font-btn { width: 46px; height: 46px; border-radius: 50%; border: 2px solid var(--border); background: var(--paper); color: var(--ink); font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px var(--shadow); display: flex; align-items: center; justify-content: center; font-size: 1rem; }
-.font-lbl { font-size: 0.62rem; color: var(--ink-faint); }
 .btn-mode {
   flex: 1; padding: 12px;
   border-radius: 10px;
@@ -139,3 +136,47 @@ textarea::placeholder { color: var(--ink-faint); font-family: 'Noto Sans KR', sa
   box-shadow: 0 4px 14px rgba(107,61,24,0.3);
 }
 .btn-mode:disabled { opacity: 0.5; }
+
+/* ── 국립국어원 자료 검증 표시 ── */
+.verify-status { display: flex; align-items: center; gap: 10px; margin: 0 20px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1.5px solid #9db6e0; color: #1f3d73; font-size: 0.9rem; font-weight: 600; }
+.verify-status.done { background: var(--good-bg); border-color: #8cc5a5; color: var(--good); }
+.spinner.small { width: 18px; height: 18px; border-width: 3px; margin: 0; flex-shrink: 0; }
+.err-override { margin-bottom: 6px; padding: 8px 10px; border-radius: 8px; background: #fff4d6; border: 1.5px solid #e6c36a; color: #6b4a00; font-size: 0.88rem; font-weight: 700; line-height: 1.6; }
+.vbox { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 0.86rem; line-height: 1.6; }
+.vbox-wait { background: #f5f2ec; color: var(--ink-faint); border: 1.5px dashed var(--border); }
+.vbox-none { background: #f5f2ec; color: var(--ink-faint); border: 1.5px solid var(--border); }
+.vbox-nikl { background: #eaf3ec; border: 1.5px solid #8cc5a5; color: var(--ink-light); }
+.vbox-web { background: #fdf3e7; border: 1.5px solid #e2b67f; color: var(--ink-light); }
+.vbox-head { font-weight: 800; margin-bottom: 4px; }
+.vbox-nikl .vbox-head { color: var(--good); }
+.vbox-web .vbox-head { color: #8a4b08; }
+.vbox-verdict { font-weight: 700; margin-bottom: 4px; }
+.vbox-explain { margin-bottom: 6px; }
+.vbox-src { display: block; margin-top: 4px; color: #1f4fa8; text-decoration: none; font-weight: 600; word-break: break-all; }
+.vbox-src:hover { text-decoration: underline; }
+.vbox-quote { display: block; color: var(--ink-faint); font-weight: 500; font-style: italic; }
+
+/* ── 한국어 어문 규범 조항 안내 ── */
+.rbox { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #eef2fb; border: 1.5px solid #9db0dc; font-size: 0.86rem; line-height: 1.6; color: var(--ink-light); }
+.rbox-head { font-weight: 800; color: #1f3d73; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.rbox-chap { font-weight: 500; font-size: 0.78rem; color: #5a6f99; }
+.rbox-pending { font-weight: 600; font-size: 0.75rem; color: #8a6d00; background: #fff4d6; border-radius: 6px; padding: 1px 6px; }
+.rbox-stmt { margin-top: 4px; font-weight: 700; color: var(--ink); }
+.rbox-ex { margin-top: 4px; white-space: pre-line; color: var(--ink-faint); font-size: 0.82rem; }
+.rbox-quote { margin-top: 4px; font-style: italic; color: var(--ink-light); }
+.rbox-link { display: inline-block; margin-top: 6px; color: #1f4fa8; font-weight: 700; text-decoration: none; }
+.rbox-link:hover { text-decoration: underline; }
+
+/* 2026-11 개선: 글자 크기 버튼을 머리말 안으로 (휴대폰에서 내용을 가리지 않게) */
+.font-ctrl { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 12px; }
+.font-lbl { font-size: 0.85rem; color: var(--ink-light); font-weight: 600; }
+.font-btn { min-width: 52px; height: 44px; padding: 0 12px; border-radius: 22px; border: 2px solid var(--border); background: var(--paper); color: var(--ink); font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px var(--shadow); font-size: 1rem; }
+.font-btn:disabled { opacity: 0.4; cursor: default; }
+.loading-hint { font-size: 0.85rem; color: var(--ink-faint); margin-top: 6px; }
+.notice-card { background: #fff6ec; border: 2px solid var(--accent-light); border-radius: 14px; padding: 16px 20px; margin-bottom: 20px; font-size: 1rem; color: var(--ink); line-height: 1.6; }
+.btn-retry { margin-top: 10px; width: 100%; padding: 12px; border-radius: 10px; border: none; background: var(--accent); color: white; font-size: 1rem; font-weight: 700; cursor: pointer; }
+.btn-share { width: 100%; margin-top: 10px; padding: 14px; border-radius: 10px; border: 2px solid #f2c300; background: #fee500; color: #3c1e1e; font-size: 1rem; font-weight: 700; cursor: pointer; }
+@media (max-width: 600px) {
+  textarea { min-height: 200px; }
+  main { padding-bottom: 40px; }
+}
