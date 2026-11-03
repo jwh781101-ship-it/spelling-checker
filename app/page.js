@@ -228,9 +228,16 @@ export default function Home() {
         seen.add(k); errors.push(e);
       }
       const comments = parts.map(p => p.overallComment).filter(Boolean);
+      // 나눠 검사하면 한쪽에서만 고친 낱말이 생길 수 있어서, 찾은 오류를 글 전체에 똑같이 반영
+      let merged = parts.map(p => p.correctedText).join('');
+      if (chunks.length > 1) {
+        for (const e of errors) {
+          if (e.wrong.length >= 2 && !e.right.includes(e.wrong)) merged = merged.split(e.wrong).join(e.right);
+        }
+      }
       const parsed = {
         hasErrors: errors.length > 0,
-        correctedText: parts.map(p => p.correctedText).join(''),
+        correctedText: merged,
         errors,
         overallComment: errors.length === 0 ? (comments[0] || '고칠 곳이 없는 바른 글입니다.') : (chunks.length > 1 ? `전체 글에서 ${errors.length}곳을 찾았어요.` : (comments[0] || '')),
       };
