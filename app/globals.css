@@ -138,7 +138,7 @@ textarea::placeholder { color: var(--ink-faint); font-family: 'Noto Sans KR', sa
 .btn-mode:disabled { opacity: 0.5; }
 
 /* ── 국립국어원 자료 검증 표시 ── */
-.verify-status { display: flex; align-items: center; gap: 10px; margin: 0 20px; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1.5px solid #9db6e0; color: #1f3d73; font-size: 0.9rem; font-weight: 600; }
+.verify-status { display: flex; align-items: center; gap: 10px; margin: 16px 20px 0; padding: 12px 14px; border-radius: 10px; background: #eef3fb; border: 1.5px solid #9db6e0; color: #1f3d73; font-size: 0.9rem; font-weight: 600; }
 .verify-status.done { background: var(--good-bg); border-color: #8cc5a5; color: var(--good); }
 .spinner.small { width: 18px; height: 18px; border-width: 3px; margin: 0; flex-shrink: 0; }
 .err-override { margin-bottom: 6px; padding: 8px 10px; border-radius: 8px; background: #fff4d6; border: 1.5px solid #e6c36a; color: #6b4a00; font-size: 0.88rem; font-weight: 700; line-height: 1.6; }
