@@ -90,13 +90,13 @@ jobs:
           set -euo pipefail
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           mkdir -p build-artifacts/runtime
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install emulator 'system-images;android-35;google_apis_playstore;x86_64' </dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install emulator 'system-images;android-35;google_apis_playstore;x86_64' </dev/null >build-artifacts/runtime/sdk-install.log 2>&1 || { tail -n 50 build-artifacts/runtime/sdk-install.log; exit 1; }
           if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
           printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name bareun_smoke --package 'system-images;android-35;google_apis_playstore;x86_64' --device pixel_6
           emulator -avd bareun_smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 >build-artifacts/runtime/emulator.log 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
-          adb wait-for-device
+          timeout 180 adb wait-for-device || { tail -n 100 build-artifacts/runtime/emulator.log; exit 1; }
           booted=false
           for attempt in {1..120}; do
             if [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then booted=true; break; fi
@@ -113,7 +113,7 @@ jobs:
           adb shell dumpsys activity activities >build-artifacts/runtime/activities.txt
           adb shell screencap -p /sdcard/startup.png
           adb pull /sdcard/startup.png build-artifacts/runtime/startup.png
-          adb shell uiautomator dump /sdcard/startup.xml >/dev/null 2>&1 || true
+          timeout 30 adb shell uiautomator dump /sdcard/startup.xml >/dev/null 2>&1 || true
           adb pull /sdcard/startup.xml build-artifacts/runtime/startup.xml || true
           if grep -q 'Process: com.jeongwonhee.bareungeulssi' build-artifacts/runtime/logcat.txt; then
             grep -A 35 -B 5 'Process: com.jeongwonhee.bareungeulssi' build-artifacts/runtime/logcat.txt
