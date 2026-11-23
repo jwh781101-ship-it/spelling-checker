@@ -426,6 +426,9 @@ export default function Home() {
             </button>
             {isRecording && <span className="rec-status show">● 녹음 중...</span>}
           </div>
+          <p style={{ margin: '12px 0', padding: '12px 14px', border: '1px solid #a56b35', borderRadius: 8, background: '#fff8e8', color: '#55300f', lineHeight: 1.6 }}>
+            입력한 글은 AI 맞춤법 검사를 위해 외부 AI 서비스로 전송됩니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
+          </p>
           <div className="btn-row">
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
@@ -643,6 +646,9 @@ export default function Home() {
           <p className="tips-src">출처: 국립국어원 한글 맞춤법(문화체육관광부 고시 제2017-12호)·표준어 규정·표준국어대사전</p>
         </div>
       </main>
+      <footer style={{ textAlign: 'center', padding: '20px' }}>
+        <a href="/privacy">개인정보처리방침</a>
+      </footer>
 
     </>
   );
