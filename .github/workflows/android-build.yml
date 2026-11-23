@@ -1,0 +1,113 @@
+name: Android build (manual only)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+          cache-disabled: true
+      - name: Check preinstalled SDK components (no license changes)
+        run: |
+          set -euo pipefail
+          : "${ANDROID_HOME:?Runner must provide ANDROID_HOME}"
+          test -f "$ANDROID_HOME/platforms/android-36/android.jar" || { echo 'Missing Android API 36 platform'; exit 1; }
+          test -x "$ANDROID_HOME/build-tools/35.0.0/aapt2" || { echo 'Missing Android build-tools 35.0.0'; exit 1; }
+      - name: Build release and protect any first-run key
+        id: build
+        env:
+          BAREUN_UPLOAD_KEYSTORE: ${{ secrets.BAREUN_UPLOAD_KEYSTORE }}
+          BAREUN_UPLOAD_PASSWORD: ${{ secrets.BAREUN_UPLOAD_PASSWORD }}
+        run: |
+          set -euo pipefail
+          umask 077
+          secret_dir="$(mktemp -d "$RUNNER_TEMP/bareun-signing.XXXXXXXX")"
+          trap 'rm -rf -- "$secret_dir"' EXIT
+          output_dir="$GITHUB_WORKSPACE/android/build-artifacts"
+          mkdir -p "$output_dir"
+          export BAREUN_KEYSTORE_PATH="$secret_dir/upload.jks"
+          if [[ -n "$BAREUN_UPLOAD_KEYSTORE" && -n "$BAREUN_UPLOAD_PASSWORD" ]]; then
+            printf '%s' "$BAREUN_UPLOAD_KEYSTORE" | base64 --decode > "$BAREUN_KEYSTORE_PATH"
+            unset BAREUN_UPLOAD_KEYSTORE
+            export BAREUN_SIGN=true
+            mode=existing
+          elif [[ -n "$BAREUN_UPLOAD_KEYSTORE" || -n "$BAREUN_UPLOAD_PASSWORD" ]]; then
+            echo 'Both existing signing secrets must be supplied together.' >&2
+            exit 1
+          elif [[ -f signing-recipient.pem ]]; then
+            # Mask values as soon as they are generated, before any other use.
+            BAREUN_UPLOAD_PASSWORD="$(openssl rand -hex 32)"
+            echo "::add-mask::$BAREUN_UPLOAD_PASSWORD"
+            export BAREUN_UPLOAD_PASSWORD
+            WRAP_PASSWORD="$(openssl rand -hex 32)"
+            echo "::add-mask::$WRAP_PASSWORD"
+            export WRAP_PASSWORD
+            export BAREUN_SIGN=true
+            keytool -genkeypair -storetype JKS -keystore "$BAREUN_KEYSTORE_PATH" -alias upload \
+              -keyalg RSA -keysize 3072 -validity 10000 -dname 'CN=Bareun Geulssi Upload' \
+              -storepass:env BAREUN_UPLOAD_PASSWORD -keypass:env BAREUN_UPLOAD_PASSWORD -noprompt
+            printf '%s' "$BAREUN_UPLOAD_PASSWORD" > "$secret_dir/password.txt"
+            tar -C "$secret_dir" -cf "$secret_dir/signing-backup.tar" upload.jks password.txt
+            openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 \
+              -pass env:WRAP_PASSWORD -in "$secret_dir/signing-backup.tar" \
+              -out "$output_dir/signing-backup.tar.enc"
+            printf '%s' "$WRAP_PASSWORD" > "$secret_dir/wrap-password.txt"
+            openssl pkeyutl -encrypt -pubin -inkey signing-recipient.pem \
+              -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 \
+              -pkeyopt rsa_mgf1_md:sha256 -in "$secret_dir/wrap-password.txt" \
+              -out "$output_dir/wrapping-key.enc"
+            unset WRAP_PASSWORD
+            mode=generated
+          else
+            echo 'No existing secrets or recipient public key: building unsigned only.'
+            mode=unsigned
+          fi
+          gradle --no-daemon bundleRelease assembleRelease
+          if [[ "$mode" == unsigned ]]; then
+            cp app/build/outputs/bundle/release/app-release.aab "$output_dir/app-unsigned.aab"
+            cp app/build/outputs/apk/release/app-release-unsigned.apk "$output_dir/app-unsigned.apk"
+          else
+            cp app/build/outputs/bundle/release/app-release.aab "$output_dir/app-release.aab"
+            cp app/build/outputs/apk/release/app-release.apk "$output_dir/app-release.apk"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+      - name: Upload encrypted first-run signing backup
+        if: steps.build.outputs.mode == 'generated'
+        uses: actions/upload-artifact@v4
+        with:
+          name: encrypted-signing-backup
+          path: |
+            android/build-artifacts/signing-backup.tar.enc
+            android/build-artifacts/wrapping-key.enc
+          if-no-files-found: error
+      - name: Upload signed release
+        if: steps.build.outputs.mode == 'existing' || steps.build.outputs.mode == 'generated'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-signed-release
+          path: |
+            android/build-artifacts/app-release.aab
+            android/build-artifacts/app-release.apk
+          if-no-files-found: error
+      - name: Upload unsigned fallback
+        if: steps.build.outputs.mode == 'unsigned'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unsigned-release
+          path: |
+            android/build-artifacts/app-unsigned.aab
+            android/build-artifacts/app-unsigned.apk
+          if-no-files-found: error

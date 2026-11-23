@@ -1,0 +1,34 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.jeongwonhee.bareungeulssi'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.jeongwonhee.bareungeulssi'
+        minSdk 23
+        targetSdk 36
+        versionCode 1
+        versionName '1.0'
+    }
+    signingConfigs {
+        if (System.getenv('BAREUN_SIGN') == 'true') {
+            release {
+                def keyPath = System.getenv('BAREUN_KEYSTORE_PATH')
+                def keyPasswordValue = System.getenv('BAREUN_UPLOAD_PASSWORD')
+                if (!keyPath || !keyPasswordValue) throw new GradleException('Signing requested but key path or password is missing')
+                storeFile file(keyPath)
+                storePassword keyPasswordValue
+                keyAlias 'upload'
+                keyPassword keyPasswordValue
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (System.getenv('BAREUN_SIGN') == 'true') signingConfig signingConfigs.release
+        }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4' }
