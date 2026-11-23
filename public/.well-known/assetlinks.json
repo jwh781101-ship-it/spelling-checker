@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.jeongwonhee.bareungeulssi",
+      "sha256_cert_fingerprints": [
+        "E6:CC:36:4A:6B:5A:DF:36:A1:60:F3:8F:39:15:15:08:30:68:0C:C5:24:E7:D0:3B:2A:9C:C1:52:90:99:44:20",
+        "ED:DE:2E:65:78:87:73:EA:C0:F0:B6:1F:19:BB:10:F8:B9:F8:B8:54:E9:F0:58:96:40:AF:BB:7D:D0:10:89:F4"
+      ]
+    }
+  }
+]
