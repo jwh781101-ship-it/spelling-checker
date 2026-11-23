@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -84,15 +85,25 @@ jobs:
             cp app/build/outputs/apk/release/app-release.apk "$output_dir/app-release.apk"
           fi
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+      - name: Fetch original 1.0 APK for regression comparison
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 45119608421 --repo jwh781101-ship-it/spelling-checker --name android-signed-release --dir build-artifacts/baseline
       - name: Android 35 startup smoke test (existing SDK licenses only)
         timeout-minutes: 15
         run: |
           set -euo pipefail
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
-          mkdir -p build-artifacts/runtime
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/bareun-avd"
+          export ANDROID_USER_HOME="$RUNNER_TEMP/bareun-android-home"
+          export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
+          mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" build-artifacts/runtime
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install emulator 'system-images;android-35;google_apis_playstore;x86_64' </dev/null >build-artifacts/runtime/sdk-install.log 2>&1 || { tail -n 50 build-artifacts/runtime/sdk-install.log; exit 1; }
           if [[ -e /dev/kvm ]]; then sudo chmod 666 /dev/kvm; fi
-          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name bareun_smoke --package 'system-images;android-35;google_apis_playstore;x86_64' --device pixel_6
+          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd --force --name bareun_smoke --path "$ANDROID_AVD_HOME/bareun_smoke.avd" --package 'system-images;android-35;google_apis_playstore;x86_64' --device pixel_6
+          test -f "$ANDROID_AVD_HOME/bareun_smoke.avd/config.ini"
+          printf 'avd.ini.encoding=UTF-8\npath=%s\n' "$ANDROID_AVD_HOME/bareun_smoke.avd" > "$ANDROID_AVD_HOME/bareun_smoke.ini"
+          emulator -list-avds
           emulator -avd bareun_smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 >build-artifacts/runtime/emulator.log 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
@@ -105,6 +116,14 @@ jobs:
           [[ "$booted" == true ]] || { echo 'Emulator did not finish booting'; exit 1; }
           adb shell input keyevent 82
           adb shell pm list packages | grep -E 'chrome|browser' | tee build-artifacts/runtime/browser-packages.txt || true
+          adb install -r build-artifacts/baseline/app-release.apk
+          adb logcat -c
+          adb shell am start -W -n com.jeongwonhee.bareungeulssi/com.google.androidbrowserhelper.trusted.LauncherActivity >build-artifacts/runtime/baseline-launch.txt 2>&1 || true
+          sleep 10
+          adb logcat -d -v threadtime >build-artifacts/runtime/baseline-logcat.txt
+          grep -F 'Component class com.google.androidbrowserhelper.trusted.ManageDataLauncherActivity does not exist' build-artifacts/runtime/baseline-logcat.txt
+          echo 'Original 1.0 component-missing startup crash reproduced.' | tee build-artifacts/runtime/result.txt
+          adb shell am force-stop com.jeongwonhee.bareungeulssi
           adb install -r build-artifacts/app-release.apk
           adb logcat -c
           adb shell am start -W -n com.jeongwonhee.bareungeulssi/com.google.androidbrowserhelper.trusted.LauncherActivity | tee build-artifacts/runtime/launch.txt
@@ -120,7 +139,7 @@ jobs:
             echo 'Application crashed during startup.'
             exit 1
           fi
-          echo 'Android 35 startup completed without an app-process fatal exception.'
+          echo 'Fixed 1.0.1 Android 35 startup completed without an app-process fatal exception.' | tee -a build-artifacts/runtime/result.txt
       - name: Upload runtime evidence
         if: always()
         uses: actions/upload-artifact@v4
