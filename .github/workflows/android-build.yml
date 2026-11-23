@@ -99,7 +99,7 @@ jobs:
           set -euo pipefail
           export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
           export ANDROID_AVD_HOME="$RUNNER_TEMP/bareun-avd"
-          export ANDROID_USER_HOME="$RUNNER_TEMP/bareun-android-home"
+          export ANDROID_USER_HOME="$HOME/.android"
           export ANDROID_EMULATOR_HOME="$ANDROID_USER_HOME"
           mkdir -p "$ANDROID_AVD_HOME" "$ANDROID_USER_HOME" build-artifacts/runtime
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install emulator 'system-images;android-35;google_apis_playstore;x86_64' </dev/null >build-artifacts/runtime/sdk-install.log 2>&1 || { tail -n 50 build-artifacts/runtime/sdk-install.log; exit 1; }
@@ -108,6 +108,10 @@ jobs:
           test -f "$ANDROID_AVD_HOME/bareun_smoke.avd/config.ini"
           printf 'avd.ini.encoding=UTF-8\npath=%s\n' "$ANDROID_AVD_HOME/bareun_smoke.avd" > "$ANDROID_AVD_HOME/bareun_smoke.ini"
           emulator -list-avds
+          adb kill-server || true
+          test -f "$ANDROID_USER_HOME/adbkey" || adb keygen "$ANDROID_USER_HOME/adbkey"
+          export ADB_VENDOR_KEYS="$ANDROID_USER_HOME/adbkey"
+          adb start-server
           emulator -avd bareun_smoke -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 >build-artifacts/runtime/emulator.log 2>&1 &
           emulator_pid=$!
           trap 'kill "$emulator_pid" 2>/dev/null || true' EXIT
