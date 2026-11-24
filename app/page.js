@@ -5,14 +5,15 @@ import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from '.
 import EasyReview from './components/EasyReview';
 import MessageTemplates from './components/MessageTemplates';
 import { insertTemplate } from './lib/templateInsertion.mjs';
+import { callAI, verifyInBatches, missingVerification, applyVerifiedEdits } from './lib/checkFlow.mjs';
 import './components/home-features.css';
 
-async function fetchRules(refs) {
+async function fetchRules(refs, signal) {
   try {
     const res = await fetch('/api/rules', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refs })
+      body: JSON.stringify({ refs }), signal
     });
     const data = await res.json();
     return data.rules || [];
@@ -41,36 +42,6 @@ function RuleBox({ rule, quote, pending }) {
   );
 }
 
-async function callVerify(stage, items) {
-  const res = await fetch('/api/verify', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stage, items })
-  });
-  const data = await res.json();
-  if (!res.ok || data.error || !Array.isArray(data.items)) throw new Error(data.error || 'verify-failed');
-  return data.items;
-}
-
-// 한 번에 너무 많이 보내면 서버가 10개까지만 보므로 6개씩 나눠 동시에 확인
-function missingVerification(item) {
-  return { id: item.id, found: false, source: 'none', verdict: '확인불가', officialRight: item.wrong, explain: '검증 응답을 받지 못해 원문을 유지합니다.', verificationFailed: true };
-}
-
-async function verifyInBatches(stage, items) {
-  const batches = [];
-  for (let i = 0; i < items.length; i += 6) batches.push(items.slice(i, i + 6));
-  const results = await Promise.all(batches.map(async batch => {
-    let response;
-    try { response = await callVerify(stage, batch); } catch { response = []; }
-    return batch.map(item => {
-      const matches = response.filter(v => v && String(v.id) === String(item.id));
-      return matches.length === 1 ? { ...matches[0], id: item.id } : missingVerification(item);
-    });
-  }));
-  return results.flat();
-}
-
 const VERDICT_TEXT = {
   nikl: { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ AI 교정이 틀려서 자료 대조 결과가 AI 제안과 달라요', '부분': '🔸 일부만 맞아서 자료 대조 결과 일부만 같아요', '둘다가능': '🟰 둘 다 맞는 표현이에요 (원래 쓰신 대로 두었어요)' },
   web:  { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ 웹 자료로는 AI 교정이 틀릴 수 있어요', '부분': '🔸 웹 자료로는 일부만 맞아요', '둘다가능': '🟰 웹 자료로는 둘 다 쓸 수 있어요' },
@@ -78,14 +49,14 @@ const VERDICT_TEXT = {
 
 function VerifyBox({ v, stage }) {
   const waitingWeb = stage === 'web' && (!v || v.source === 'none');
-  if (stage === 'nikl' && !v) return <div className="vbox vbox-wait">🏛️ 국립국어원 자료를 찾고 있어요...</div>;
+  if ((stage === 'nikl' || stage === 'local') && !v) return <div className="vbox vbox-wait">🏛️ 국립국어원 자료를 찾고 있어요...</div>;
   if (waitingWeb) return <div className="vbox vbox-wait">🔎 국립국어원 자료가 없어서 웹에서 찾고 있어요...</div>;
   if (!v) {
     if (stage === 'error') return <div className="vbox vbox-none">⚠️ 자료 확인 중 문제가 생겼어요. AI 판단만 보여 드려요.</div>;
     return null;
   }
   if (v.source === 'none') {
-    return <div className="vbox vbox-none">{v.verificationFailed ? '⚠️ 검증 응답을 받지 못해 원문을 유지합니다.' : '❔ 국립국어원·웹 자료에서 근거를 찾지 못했어요. 원문을 유지하고 제안만 보여 드려요.'}</div>;
+    return <div className="vbox vbox-none">{v.verificationFailed ? '검증 응답을 받지 못해 원문을 유지합니다.' : v.localOnly ? '제공된 공식 자료만으로 근거를 확인하지 못해 원문을 유지합니다. 필요하면 자료 검색 포함 검사를 선택해 주세요.' : '국립국어원·웹 자료에서 근거를 찾지 못했어요. 원문을 유지하고 제안만 보여 드려요.'}</div>;
   }
   const isNikl = v.source === 'nikl';
   return (
@@ -106,32 +77,6 @@ function VerifyBox({ v, stage }) {
   );
 }
 
-// AI 답에서 JSON만 꺼내기 (앞뒤에 설명이나 코드블록 표시가 붙어도 괜찮게)
-function parseJSON(text) {
-  const s = String(text || '');
-  const a = s.indexOf('{'), b = s.lastIndexOf('}');
-  if (a < 0 || b <= a) throw new Error('bad-json');
-  return JSON.parse(s.slice(a, b + 1));
-}
-
-// 서버에 맞춤법 검사 / 사전 찾기 요청 (실패하면 한 번 더 시도)
-async function callAI(mode, text, contextBefore = '', contextAfter = '') {
-  let lastErr;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    try {
-      const res = await fetch('/api/check', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, text, contextBefore, contextAfter })
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
-      return parseJSON(data.text);
-    } catch (e) { lastErr = e; }
-  }
-  throw lastErr;
-}
-
 function friendlyError(e) {
   const m = String(e?.message || e || '');
   if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return '인터넷 연결이 불안정해요. 와이파이나 데이터를 확인한 뒤 다시 눌러 주세요.';
@@ -143,6 +88,9 @@ export default function Home() {
   const [text, setText] = useState('');
   const [mode, setMode] = useState('check'); // 'check' | 'dict'
   const [loading, setLoading] = useState(false);
+  const [checkProfile, setCheckProfile] = useState('fast');
+  const [elapsedMs, setElapsedMs] = useState(null);
+  const requestControllerRef = useRef(null);
   const [result, setResult] = useState(null);
   const [dictResult, setDictResult] = useState(null);
   const [tips, setTips] = useState([]);
@@ -169,6 +117,8 @@ export default function Home() {
   const templatePromptRef = useRef(null);
   const checkFeatureRef = useRef(null);
   const copySequenceRef = useRef(0);
+
+  useEffect(() => () => { verifyRunRef.current++; requestControllerRef.current?.abort(); }, []);
 
   useEffect(() => {
     if (pendingTemplate !== null) {
@@ -198,88 +148,75 @@ export default function Home() {
     setTips(tipsFor(next));
   }
 
-  async function checkSpellingDirect(inputText) {
+  function cancelInspection() {
+    verifyRunRef.current++;
+    requestControllerRef.current?.abort();
+    setLoading(false); setProgress(''); setVerifyStage('done');
+    if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='fast');return map;});
+    setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다.'});
+    setResult(prev => prev ? {...prev, errors:prev.errors.map(e => e.status === 'pending' ? {...e,status:'needs_review'} : e)} : prev);
+  }
+
+  async function checkSpellingDirect(inputText, profile = checkProfile) {
     const t = inputText ?? text;
     setErrorMsg(null);
-    if (!t.trim()) { setErrorMsg({ text: '글을 먼저 입력해 주세요.' }); return; }
-    if (t.trim().length < 2) { setErrorMsg({ text: '조금 더 길게 입력해 주세요.' }); return; }
-    const runId = ++verifyRunRef.current;
+    if (!t.trim()) { setErrorMsg({text:'글을 먼저 입력해 주세요.'}); return; }
+    if (t.trim().length < 2) { setErrorMsg({text:'조금 더 길게 입력해 주세요.'}); return; }
+    requestControllerRef.current?.abort();
+    const controller = new AbortController(); requestControllerRef.current = controller;
+    const runId = ++verifyRunRef.current, startedAt = Date.now();
+    setCheckProfile(profile); setElapsedMs(null);
     setVerify({}); setVerifyStage(''); setAiRules([]);
     setLoading(true); setResult(null); setDictResult(null);
     try {
-      const chunks = splitTextWithContext(t);
-      let done = 0;
+      const chunks = splitTextWithContext(t); let done = 0;
       setProgress(chunks.length > 1 ? '글을 나누어 살펴보고 있어요 (0/' + chunks.length + ')' : '');
       const parts = await Promise.all(chunks.map(async c => {
-        if (!c.text.trim()) return { errors: [] };
-        const r = await callAI('check', c.text, c.contextBefore, c.contextAfter);
-        done++;
-        if (chunks.length > 1) setProgress('글을 나누어 살펴보고 있어요 (' + done + '/' + chunks.length + ')');
+        if (!c.text.trim()) return {errors:[]};
+        const r = await callAI('check',c.text,c.contextBefore,c.contextAfter,{profile,signal:controller.signal});
+        if (verifyRunRef.current === runId) { done++; if(chunks.length > 1)setProgress('글을 나누어 살펴보고 있어요 ('+done+'/'+chunks.length+')'); }
         return r;
       }));
       if (verifyRunRef.current !== runId) return;
-      const candidates = parts.flatMap((p, i) => anchorEdits(chunks[i].text, p.errors || []).map(e => ({
-        ...e, start: e.start === null ? null : e.start + chunks[i].start,
-        end: e.end === null ? null : e.end + chunks[i].start,
-      })));
-      const errors = anchorEdits(t, candidates);
-      const parsed = { originalText: t, errors, hasErrors: errors.length > 0,
-        overallComment: errors.length ? 'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.' : 'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.' };
+      const candidates = parts.flatMap((p,i) => anchorEdits(chunks[i].text,p.errors||[]).map(e => ({...e,start:e.start===null?null:e.start+chunks[i].start,end:e.end===null?null:e.end+chunks[i].start})));
+      const errors = anchorEdits(t,candidates);
+      const parsed = {originalText:t,errors,profile,hasErrors:errors.length>0,overallComment:errors.length?'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.':'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.'};
       setResult(parsed);
-      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-      runVerify(t, parsed, runId);
+      setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+      if(!errors.length)setElapsedMs(Date.now()-startedAt);
+      runVerify(t,parsed,runId,{profile,signal:controller.signal,startedAt});
     } catch(e) {
-      if (verifyRunRef.current === runId) setErrorMsg({ text: friendlyError(e), retry: 'check' });
-    } finally { setLoading(false); setProgress(''); }
+      if(verifyRunRef.current===runId && e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'check'});
+    } finally {if(verifyRunRef.current===runId){setLoading(false);setProgress('');}}
   }
 
-  async function runVerify(original, parsed, runId) {
-    const errs = parsed?.errors || [];
-    if (!errs.length) { setVerifyStage(''); return; }
-    fetchRules(errs.map(e => e.rule || '')).then(r => { if (verifyRunRef.current === runId) setAiRules(r); });
-    const items = errs.map(e => ({ id: e.id, wrong: e.wrong, right: e.right, rule: e.rule || '', context: contextOf(original, e) }));
-    const map = {};
-    setVerifyStage('nikl');
+  async function runVerify(original,parsed,runId,options) {
+    const errs=parsed?.errors||[];
+    if(!errs.length){setVerifyStage('');return;}
+    const localOnly=options.profile==='fast';
+    fetchRules(errs.map(e=>e.rule||''),options.signal).then(r=>{if(verifyRunRef.current===runId)setAiRules(r);});
+    const items=errs.map(e=>({id:e.id,wrong:e.wrong,right:e.right,rule:e.rule||'',context:contextOf(original,e)}));
+    const map={}; setVerifyStage(localOnly?'local':'nikl');
     try {
-      const r1 = await verifyInBatches('nikl', items);
-      if (verifyRunRef.current !== runId) return;
-      r1.forEach(v => { map[v.id] = v; });
-      setResult(prev => {
-        if (!prev || prev.originalText !== original) return prev;
-        return { ...prev, errors: prev.errors.map(err => {
-          if (err.manual || err.status === 'needs_review') return err;
-          const v = map[err.id];
-          if (!v || v.source !== 'nikl' || v.found !== true) return { ...err, status: 'needs_review' };
-          if (v.verdict === '일치') return { ...err, status: 'applied' };
-          if (v.verdict === '둘다가능') return { ...err, status: 'kept' };
-          if ((v.verdict === 'AI교정틀림' || v.verdict === '부분') && typeof v.officialRight === 'string' && v.officialRight.trim() && !/[\/\n\r]/.test(v.officialRight) && !/\s또는\s/.test(v.officialRight)) {
-            if (v.officialRight === err.wrong) return { ...err, status: 'kept' };
-            return { ...err, aiRight: err.right, right: v.officialRight, status: 'applied' };
-          }
-          return { ...err, status: 'needs_review' };
-        }) };
-      });
-      setVerify({ ...map });
-      const rest = items.filter(it => !map[it.id] || map[it.id].source === 'none');
-      if (rest.length) {
+      const r1=await verifyInBatches(localOnly?'local':'nikl',items,{signal:options.signal});
+      if(verifyRunRef.current!==runId)return;
+      r1.forEach(v=>{map[v.id]=v;});
+      setResult(prev=>verifyRunRef.current===runId&&prev?.originalText===original?{...prev,errors:applyVerifiedEdits(original,prev.errors,map)}:prev);
+      setVerify({...map});
+      const rest=items.filter(it=>!map[it.id]||map[it.id].source==='none');
+      if(!localOnly&&rest.length){
         setVerifyStage('web');
-        try {
-          const r2 = await verifyInBatches('web', rest);
-          if (verifyRunRef.current !== runId) return;
-          r2.forEach(v => { map[v.id] = { ...v, verificationFailed: !!(v.verificationFailed || map[v.id]?.verificationFailed) }; });
-          setVerify({ ...map });
-        } catch (e) {
-          rest.forEach(it => { map[it.id] = missingVerification(it); });
-          setVerify({ ...map });
-        }
+        const r2=await verifyInBatches('web',rest,{signal:options.signal});
+        if(verifyRunRef.current!==runId)return;
+        r2.forEach(v=>{map[v.id]={...v,verificationFailed:!!(v.verificationFailed||map[v.id]?.verificationFailed)};});
+        setVerify({...map});
       }
-      if (verifyRunRef.current === runId) setVerifyStage('done');
-    } catch (e) {
-      if (verifyRunRef.current === runId) {
-        setResult(prev => prev && prev.originalText === original ? { ...prev, errors: prev.errors.map(err => err.manual ? err : { ...err, status: 'needs_review' }) } : prev);
-        items.forEach(it => { if (!map[it.id]) map[it.id] = missingVerification(it); });
-        setVerify({ ...map });
-        setVerifyStage('done');
+      if(verifyRunRef.current===runId){setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);}
+    } catch(e) {
+      if(verifyRunRef.current===runId&&e?.name!=='AbortError'){
+        items.forEach(it=>{if(!map[it.id])map[it.id]=missingVerification(it,localOnly);});
+        setResult(prev=>prev?.originalText===original?{...prev,errors:applyVerifiedEdits(original,prev.errors,map)}:prev);
+        setVerify({...map});setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);
       }
     }
   }
@@ -290,26 +227,22 @@ export default function Home() {
   }
 
   async function searchDictDirect(inputText) {
-    const t = (inputText || text).trim();
-    setErrorMsg(null);
-    if (!t) { setErrorMsg({ text: '찾을 단어를 먼저 입력해 주세요.' }); return; }
-    if (t.length > 30) { setErrorMsg({ text: '사전은 단어 하나만 찾을 수 있어요. 단어만 남기고 다시 눌러 주세요. (글 검사는 ✏️ 맞춤법 버튼)' }); return; }
-    setLoading(true); setResult(null); setDictResult(null);
-    try {
-      const parsed = await callAI('dict', t);
-      parsed.searchWord = t;
-      setDictResult(parsed);
-      setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    } catch(e) {
-      setErrorMsg({ text: friendlyError(e), retry: 'dict' });
-    }
-    finally { setLoading(false); }
+    const t=(inputText||text).trim();setErrorMsg(null);
+    if(!t){setErrorMsg({text:'찾을 단어를 먼저 입력해 주세요.'});return;}
+    if(t.length>30){setErrorMsg({text:'사전은 단어 하나만 찾을 수 있어요. 단어만 남기고 다시 눌러 주세요.'});return;}
+    requestControllerRef.current?.abort();const controller=new AbortController();requestControllerRef.current=controller;
+    const runId=++verifyRunRef.current;setVerifyStage('');setElapsedMs(null);
+    setLoading(true);setResult(null);setDictResult(null);
+    try{const parsed=await callAI('dict',t,'','',{signal:controller.signal});if(verifyRunRef.current!==runId)return;parsed.searchWord=t;setDictResult(parsed);setTimeout(()=>resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);}
+    catch(e){if(verifyRunRef.current===runId&&e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'dict'});}
+    finally{if(verifyRunRef.current===runId)setLoading(false);}
   }
 
   async function checkSpelling() { await checkSpellingDirect(); }
   async function searchDict() { await searchDictDirect(); }
 
   function clearAll() {
+    requestControllerRef.current?.abort(); setLoading(false); setProgress(''); setElapsedMs(null);
     verifyRunRef.current++; setVerify({}); setVerifyStage(''); setAiRules([]);
     setText(''); setResult(null); setDictResult(null); setErrorMsg(null);
   }
@@ -335,6 +268,7 @@ export default function Home() {
   function applyTemplate(body, method = 'replace') {
     const next = insertTemplate(text, body, method);
     if (!next.ok) { setTemplateNotice(next.error); return; }
+    requestControllerRef.current?.abort();setLoading(false);setElapsedMs(null);
     verifyRunRef.current++;
     recognitionRef.current?.abort?.();
     setIsRecording(false);
@@ -454,6 +388,13 @@ export default function Home() {
           <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates} onClick={closeTemplates}>글 검사</button>
           <button type="button" aria-pressed={showTemplates} disabled={loading || isRecording} onClick={() => setShowTemplates(true)}>경조사 문구</button>
         </nav>
+        <section className="check-speed-options" hidden={showTemplates} aria-label="검사 방식">
+          <div role="group" aria-label="검사 속도 선택">
+            <button type="button" aria-pressed={checkProfile==='fast'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('fast')}>빠른 검사</button>
+            <button type="button" aria-pressed={checkProfile==='thorough'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('thorough')}>자료 검색 포함</button>
+          </div>
+          <p>{checkProfile==='fast'?'공식 자료 대조 포함, 실시간 웹 검색 생략. 근거가 부족하면 원문을 유지합니다.':'공식 자료와 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
+        </section>
         <div hidden={!showTemplates} className="phrase-panel">
           <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
           {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
@@ -518,7 +459,8 @@ export default function Home() {
           <div className="loading-card show">
             <div className="spinner"></div>
             <p className="loading-text">{mode === 'dict' ? '사전을 찾고 있습니다...' : '글을 꼼꼼히 살펴보고 있습니다...'}</p>
-            <p className="loading-hint">{progress || '보통 10~20초 걸려요. 잠시만 기다려 주세요.'}</p>
+            <p className="loading-hint">{progress || '오류 후보를 찾고 있어요. 자동 재시도 없이 결과를 확인합니다.'}</p>
+            <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
           </div>
         )}
 
@@ -547,9 +489,8 @@ export default function Home() {
             {verifyStage && verifyStage !== 'done' && verifyStage !== 'error' && (
               <div className="verify-status">
                 <div className="spinner small"></div>
-                {verifyStage === 'nikl'
-                  ? '국립국어원 자료로 한 번 더 확인하고 있어요 (30초쯤 걸려요)'
-                  : '국립국어원에 없는 항목은 웹에서 찾고 있어요'}
+                {verifyStage === 'local' ? '제공된 공식 자료로 독립 대조 중입니다. 실시간 웹 검색은 생략합니다.' : verifyStage === 'nikl' ? '국립국어원 자료로 한 번 더 확인하고 있어요' : '국립국어원에 없는 항목은 웹에서 찾고 있어요'}
+                <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
               </div>
             )}
             {verifyStage === 'done' && (
@@ -557,6 +498,8 @@ export default function Home() {
                 AI의 공식 자료 대조 결과: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
               </div>
             )}
+            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='fast'?'빠른 검사':'자료 검색 포함'} 완료 · {(elapsedMs/1000).toFixed(1)}초{result.profile==='fast'?' · 실시간 웹 검색 생략':''}</p>}
+            {verifyStage==='done' && result.profile==='fast' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>더 많은 자료를 찾아 원문부터 다시 검사합니다. 직접 선택한 적용·유지 내용은 초기화되며 시간이 더 걸립니다.</p></div>}
             <div className="corrected-sec">
               <div className="sec-label">교정된 글</div>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>

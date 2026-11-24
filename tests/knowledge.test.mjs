@@ -44,3 +44,5 @@ test('이미지 특수문자를 빈칸으로 숨기지 않고 전사·미확인 
  const r=rules.rules.find(r=>r.id==='M35');assert.ok(r.rule.includes('[ㅘ+받침ㅆ]'));assert.ok(r.rule.includes('[ㅙ+받침ㅆ]'));assert.equal(r.hasUntranscribedImages,false);
  const f=rules.rules.find(r=>r.id==='F438');assert.equal(f.hasUntranscribedImages,true);assert.ok(f.rule.includes('[그림]'));assert.ok(f.images.length>0);
 });
+
+test('되다·뵈다 활용형도 해당 공식 용례를 우선 검색',()=>{for(const [wrong,right,id]of [['됬어요','됐어요','C035'],['뵈요','봬요','C036']]){const r=retrieveKnowledge(index,'저도 할수 있어요. 준비가 됬어요. 내일 뵈요.',{words:[wrong,right],maxCases:2});assert.ok(r.caseIds.includes(id));}});
