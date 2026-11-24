@@ -39,3 +39,8 @@ test('대상 사이시옷 교정은 다른 띄어쓰기 용례에 밀리지 않�
  const r=retrieveKnowledge(index,'나는 할수 있다. 다 됬다. 나무잎이 떨어졌다. 다시 할수 있다.',{words:['나무잎','나뭇잎'],maxCases:2});
  assert.ok(r.caseIds.includes('C032'));assert.ok(r.ruleIds.includes('M30'));
 });
+
+test('이미지 특수문자를 빈칸으로 숨기지 않고 전사·미확인 표기',()=>{
+ const r=rules.rules.find(r=>r.id==='M35');assert.ok(r.rule.includes('[ㅘ+받침ㅆ]'));assert.ok(r.rule.includes('[ㅙ+받침ㅆ]'));assert.equal(r.hasUntranscribedImages,false);
+ const f=rules.rules.find(r=>r.id==='F438');assert.equal(f.hasUntranscribedImages,true);assert.ok(f.rule.includes('[그림]'));assert.ok(f.images.length>0);
+});

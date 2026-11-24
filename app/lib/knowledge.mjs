@@ -69,7 +69,7 @@ export function retrieveKnowledge(index, text, options = {}) {
   }
   for(const {r} of ranks) {
     const e = excerpt(r.rule,r.explain,keys,maxDocChars);
-    const b = {id:r.id,kind:'rule',title:`${r.law} ${r.article}`,url:r.url,truncated:e.truncated,text:`[${r.id}] ${r.law} ${r.article} (${r.chapter})\n출처: ${r.url}\n${e.text}`};
+    const b = {id:r.id,kind:'rule',title:`${r.law} ${r.article}`,url:r.url,truncated:e.truncated,text:`[${r.id}] ${r.law} ${r.article} (${r.chapter})\n출처: ${r.url}\n${r.imageNotice ? '자료 주의: '+r.imageNotice+'\n' : ''}${e.text}`};
     if(size+b.text.length<=maxChars){blocks.push(b);size+=b.text.length;}
   }
   return {blocks,ruleIds:blocks.filter(b=>b.kind==='rule').map(b=>b.id),caseIds:blocks.filter(b=>b.kind==='usage').map(b=>b.id),context:blocks.map(b=>b.text).join('\n\n---\n\n'),characters:size};

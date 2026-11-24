@@ -23,7 +23,7 @@ export function publicRule(r) {
 const normalizedQuote = s => String(s || '').normalize('NFC').replace(/\s+/gu,' ').trim();
 export function quoteInRule(id, quote) {
   const r = getRule(id), q = normalizedQuote(quote);
-  return !!r && q.length >= 12 && q.length <= 450 && normalizedQuote(r.rule+'\n'+r.explain).includes(q);
+  return !!r && !r.hasUntranscribedImages && !q.includes('[ㅘ+') && !q.includes('[ㅝ+') && !q.includes('[ㅙ+') && q.length >= 12 && q.length <= 450 && normalizedQuote(r.rule+'\n'+r.explain).includes(q);
 }
 export function quoteInCase(id, quote) {
   const c = getCase(id), q = normalizedQuote(quote);
@@ -35,5 +35,5 @@ export function knowledgeForItem(item) {
 }
 export const ruleContext = item => knowledgeForItem(item).blocks.map(b=>b.text);
 export function knowledgeSummary() {
-  return {version:'2026.11.24-1',source:data.source,fetchedAt:data.fetchedAt,rules:data.rules.length,counts:data.counts,cases:cases.length,sourceUrls:data.sourceUrls,attribution:data.attribution,copyrightPolicy:data.copyrightPolicy};
+  return {version:'2026.11.24-1',source:data.source,fetchedAt:data.fetchedAt,rules:data.rules.length,counts:data.counts,cases:cases.length,sourceUrls:data.sourceUrls,attribution:data.attribution,copyrightPolicy:data.copyrightPolicy,imagePolicy:data.imagePolicy,untranscribedRules:data.rules.filter(r=>r.hasUntranscribedImages).length};
 }
