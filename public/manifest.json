@@ -1,7 +1,7 @@
 {
-  "name": "바른 글씨 - 맞춤법 도우미",
-  "short_name": "바른 글씨",
-  "description": "맞춤법과 용례를 바르게 — 쉽고 편하게",
+  "name": "바른 한마디",
+  "short_name": "바른 한마디",
+  "description": "맞춤법은 바르게, 축하와 위로는 알맞게",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f0ebe2",

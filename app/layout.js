@@ -1,13 +1,13 @@
 import './globals.css';
 
 export const metadata = {
-  title: '바른 글씨 - 맞춤법 도우미',
-  description: '맞춤법과 용례를 바르게 — 쉽고 편하게',
+  title: '바른 한마디 - 맞춤법·경조사 문구',
+  description: '맞춤법은 바르게, 축하와 위로는 알맞게',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '바른 글씨',
+    title: '바른 한마디',
   },
   formatDetection: { telephone: false },
 };
@@ -27,7 +27,7 @@ export default function RootLayout({ children }) {
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-        <meta name="apple-mobile-web-app-title" content="바른 글씨" />
+        <meta name="apple-mobile-web-app-title" content="바른 한마디" />
         <script dangerouslySetInnerHTML={{__html: `
           if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {

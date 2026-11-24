@@ -1,5 +1,5 @@
 import { knowledgeSummary } from '../lib/kornorms';
-export const metadata={title:'자료와 검증 방식 | 바른 글씨'};
+export const metadata={title:'자료와 검증 방식 | 바른 한마디'};
 export default function SourcesPage(){
   const s=knowledgeSummary();
   const rows=[['한글 맞춤법',s.counts.M],['표준어 사정 원칙',s.counts.S],['표준 발음법',s.counts.V],['문장 부호',s.counts.P],['외래어 표기법의 조항·표',s.counts.F],['로마자 표기법',s.counts.R]];

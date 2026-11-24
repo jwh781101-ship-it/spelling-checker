@@ -440,8 +440,8 @@ export default function Home() {
   return (
     <>
       <header>
-        <div className="logo">바른 글씨 ✏️</div>
-        <p className="tagline">맞춤법과 용례를 바르게 — 쉽고 편하게</p>
+        <div className="logo">바른 한마디 ✏️</div>
+        <p className="tagline">맞춤법은 바르게, 축하와 위로는 알맞게</p>
         <div className="font-ctrl">
           <span className="font-lbl">글자 크기</span>
           <button className="font-btn" aria-label="글자 작게" onClick={() => setFontScale(s => Math.max(-2, s-1))} disabled={fontScale <= -2}>가-</button>

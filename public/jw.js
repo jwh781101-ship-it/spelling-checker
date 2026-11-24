@@ -1,4 +1,4 @@
-const CACHE_NAME = 'bareun-v1';
+const CACHE_NAME = 'bareun-hanmadi-v2';
 const STATIC_ASSETS = ['/', '/manifest.json'];
 
 self.addEventListener('install', (e) => {
