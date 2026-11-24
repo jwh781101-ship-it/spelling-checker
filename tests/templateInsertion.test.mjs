@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {insertTemplate,MAX_INPUT_LENGTH} from '../app/lib/templateInsertion.mjs';
+test('문구로 기존 글을 바꾸는 결과 계산',()=>assert.deepEqual(insertTemplate('원래 글','감사합니다.'),{ok:true,text:'감사합니다.'}));
+test('뒤에 붙일 때 원문의 공백·줄바꿈을 보존',()=>assert.equal(insertTemplate(' 원래 글\n','감사합니다.','append').text,' 원래 글\n\n\n감사합니다.'));
+test('빈 글에 붙이면 불필요한 앞 줄바꿈이 없음',()=>assert.equal(insertTemplate('','감사합니다.','append').text,'감사합니다.'));
+test('문구의 입력 공백을 조용히 바꾸지 않음',()=>assert.equal(insertTemplate('',' 감사합니다.\n').text,' 감사합니다.\n'));
+test('빈 문구나 비문자열 입력 거부',()=>{assert.equal(insertTemplate('','  ').ok,false);assert.equal(insertTemplate(null,'감사합니다.').ok,false);assert.equal(insertTemplate('',null).ok,false)});
+test('알 수 없는 삽입 방법 거부',()=>assert.equal(insertTemplate('가','나','unknown').ok,false));
+test('최대 길이를 넘으면 자르지 않고 거부',()=>{assert.equal(insertTemplate('가'.repeat(MAX_INPUT_LENGTH),'나','append').ok,false);assert.equal(insertTemplate('','나'.repeat(MAX_INPUT_LENGTH+1)).ok,false)});
+test('정확히 최대 길이까지 허용',()=>assert.equal(insertTemplate('','나'.repeat(MAX_INPUT_LENGTH)).text.length,MAX_INPUT_LENGTH));
+test('입력과 결과는 UTF16 길이 기준으로 일치',()=>{const r=insertTemplate('가','축하해요 😀','append');assert.equal(r.text,'가\n\n축하해요 😀');assert.equal(insertTemplate('','😀', 'replace',1).ok,false)});

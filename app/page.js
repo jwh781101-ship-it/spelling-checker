@@ -2,6 +2,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { tipsFor } from './data/tips';
 import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
+import EasyReview from './components/EasyReview';
+import MessageTemplates from './components/MessageTemplates';
+import { insertTemplate } from './lib/templateInsertion.mjs';
+import './components/home-features.css';
 
 async function fetchRules(refs) {
   try {
@@ -146,6 +150,10 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [fontScale, setFontScale] = useState(0);
+  const [reviewMode, setReviewMode] = useState('all');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [pendingTemplate, setPendingTemplate] = useState(null);
+  const [templateNotice, setTemplateNotice] = useState('');
   const [tipPage, setTipPage] = useState(0);
   const [errorMsg, setErrorMsg] = useState(null); // { text, retry }
   const [progress, setProgress] = useState(''); // 긴 글 검사 진행 상황
@@ -157,6 +165,17 @@ export default function Home() {
   const verifyRunRef = useRef(0);
   const recognitionRef = useRef(null);
   const resultRef = useRef(null);
+  const inputRef = useRef(null);
+  const templatePromptRef = useRef(null);
+  const checkFeatureRef = useRef(null);
+  const copySequenceRef = useRef(0);
+
+  useEffect(() => {
+    if (pendingTemplate !== null) {
+      templatePromptRef.current?.scrollIntoView({behavior:'smooth',block:'center'});
+      templatePromptRef.current?.focus();
+    }
+  }, [pendingTemplate]);
 
   useEffect(() => {
     const s = localStorage.getItem('bareun_saved');
@@ -205,7 +224,7 @@ export default function Home() {
       })));
       const errors = anchorEdits(t, candidates);
       const parsed = { originalText: t, errors, hasErrors: errors.length > 0,
-        overallComment: errors.length ? 'AI가 제안한 항목을 살펴보고 있어요. 자료가 발견되어도 판단이 틀릴 수 있습니다.' : 'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.' };
+        overallComment: errors.length ? 'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.' : 'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.' };
       setResult(parsed);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
       runVerify(t, parsed, runId);
@@ -266,6 +285,7 @@ export default function Home() {
   }
 
   function chooseCorrection(id, manual) {
+    setCopied(false);
     setResult(prev => prev && ({ ...prev, errors: prev.errors.map(e => e.id === id ? { ...e, manual } : e) }));
   }
 
@@ -294,6 +314,45 @@ export default function Home() {
     setText(''); setResult(null); setDictResult(null); setErrorMsg(null);
   }
 
+  function closeTemplates(target = 'tab') {
+    setShowTemplates(false);
+    setPendingTemplate(null);
+    setTemplateNotice('');
+    setTimeout(() => {
+      if (target === 'input') {
+        inputRef.current?.scrollIntoView({behavior:'smooth',block:'center'});
+        inputRef.current?.focus();
+      } else checkFeatureRef.current?.focus({preventScroll:true});
+    }, 0);
+  }
+
+  function cancelTemplateInsertion() {
+    setPendingTemplate(null);
+    setTemplateNotice('');
+    setTimeout(() => document.getElementById('mt-message-body')?.focus(), 0);
+  }
+
+  function applyTemplate(body, method = 'replace') {
+    const next = insertTemplate(text, body, method);
+    if (!next.ok) { setTemplateNotice(next.error); return; }
+    verifyRunRef.current++;
+    recognitionRef.current?.abort?.();
+    setIsRecording(false);
+    setVerify({}); setVerifyStage(''); setAiRules([]);
+    setResult(null); setDictResult(null); setErrorMsg(null); setCopied(false);
+    setMode('check'); setText(next.text);
+    closeTemplates('input');
+  }
+
+  function requestTemplate(body) {
+    if (loading || isRecording) { setTemplateNotice('검사나 음성 입력을 마친 뒤 문구를 넣어 주세요.'); return; }
+    if (typeof body !== 'string' || !body.trim()) { setTemplateNotice('넣을 문구를 먼저 선택해 주세요.'); return; }
+    setTemplateNotice('');
+    if (text === body) { closeTemplates('input'); return; }
+    if (text.length) { setPendingTemplate(body); return; }
+    applyTemplate(body);
+  }
+
   function toggleVoice() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
       setErrorMsg({ text: '이 브라우저에서는 음성 입력이 안 돼요. 크롬이나 사파리에서 열어 주세요.' }); return;
@@ -315,12 +374,20 @@ export default function Home() {
     rec.start();
   }
 
-  function copyText() {
+  async function copyText() {
     if (!result) return;
-    navigator.clipboard.writeText(buildCorrection(result.originalText, result.errors).text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }).catch(() => setErrorMsg({ text: '복사가 안 됐어요. 교정된 글을 길게 눌러서 복사해 주세요.' }));
+    const snapshot = buildCorrection(result.originalText, result.errors).text;
+    const sequence = ++copySequenceRef.current;
+    setCopied(false);
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('clipboard-unavailable');
+      await navigator.clipboard.writeText(snapshot);
+      if (sequence !== copySequenceRef.current) return;
+      setCopied(snapshot);
+      setTimeout(() => { if (sequence === copySequenceRef.current) setCopied(false); }, 2000);
+    } catch {
+      if (sequence === copySequenceRef.current) setErrorMsg({ text: '복사가 안 됐어요. 교정된 글을 길게 눌러서 복사해 주세요.' });
+    }
   }
 
   // 휴대폰 공유창(카카오톡, 문자 등)으로 바로 보내기
@@ -356,6 +423,20 @@ export default function Home() {
 
   const correction = result ? buildCorrection(result.originalText, result.errors) : null;
 
+  useEffect(() => {
+    copySequenceRef.current++;
+    setCopied(false);
+  }, [correction?.text]);
+
+  function renderEvidence(err, i) {
+    return <>
+      {verify[err.id]
+        ? (verify[err.id].source === 'nikl' && <RuleBox rule={verify[err.id].rule} quote={verify[err.id].ruleQuote} />)
+        : <RuleBox rule={aiRules[i]} pending={verifyStage === 'nikl' ? 'nikl' : 'ai'} />}
+      <VerifyBox v={verify[err.id]} stage={verifyStage} />
+    </>;
+  }
+
   return (
     <>
       <header>
@@ -369,6 +450,25 @@ export default function Home() {
       </header>
 
       <main>
+        <nav className="app-feature-switch" aria-label="기능 선택">
+          <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates} onClick={closeTemplates}>글 검사</button>
+          <button type="button" aria-pressed={showTemplates} disabled={loading || isRecording} onClick={() => setShowTemplates(true)}>경조사 문구</button>
+        </nav>
+        <div hidden={!showTemplates} className="phrase-panel">
+          <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
+          {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
+            <h3>입력해 둔 글이 있습니다</h3>
+            <p>선택한 문구를 어떻게 넣을까요? 글을 바꾸거나 붙이면 이전 검사 결과는 초기화됩니다.</p>
+            <div className="template-confirm-actions">
+              <button type="button" onClick={() => applyTemplate(pendingTemplate, 'replace')}>기존 글 바꾸기</button>
+              <button type="button" onClick={() => applyTemplate(pendingTemplate, 'append')}>기존 글 뒤에 붙이기</button>
+              <button type="button" onClick={cancelTemplateInsertion}>취소</button>
+            </div>
+          </section>}
+          {templateNotice && <p className="template-inline-notice" role="alert">{templateNotice}</p>}
+          <MessageTemplates onUse={requestTemplate} onClose={closeTemplates} />
+        </div>
+        <div hidden={showTemplates}>
         {/* 입력 카드 */}
         <div className="card">
           <div className="card-head">
@@ -378,6 +478,8 @@ export default function Home() {
           </div>
           <div className="ta-wrap">
             <textarea
+              ref={inputRef}
+              aria-label={mode === 'dict' ? '찾을 단어' : '검사할 글'}
               value={text}
               onChange={e => setText(e.target.value)}
               placeholder={mode === 'check'
@@ -462,7 +564,11 @@ export default function Home() {
             {result.errors?.length > 0 && (
               <div className="errors-sec">
                 <div className="sec-label" style={{marginBottom:'12px'}}>수정 내역</div>
-                {result.errors.map((err, i) => (
+                <div className="review-view-switch" role="group" aria-label="수정 확인 방식">
+                  <button type="button" aria-pressed={reviewMode === 'all'} onClick={() => setReviewMode('all')}>전체 목록</button>
+                  <button type="button" aria-pressed={reviewMode === 'simple'} onClick={() => setReviewMode('simple')}>하나씩 크게 확인</button>
+                </div>
+                {reviewMode === 'simple' ? <EasyReview original={result.originalText} errors={result.errors} verify={verify} verifyStage={verifyStage} onChoose={chooseCorrection} renderDetails={renderEvidence} /> : result.errors.map((err, i) => (
                   <div key={err.id} className="error-item" style={{animationDelay: i*0.05+'s'}}>
                     <div className="err-num">{i+1}</div>
                     <div className="err-body">
@@ -481,10 +587,10 @@ export default function Home() {
                         <button type="button" disabled={err.start === null || err.overlap} aria-pressed={err.manual === 'apply'} onClick={() => chooseCorrection(err.id, 'apply')}>이 교정 적용</button>
                         <button type="button" aria-pressed={err.manual === 'keep'} onClick={() => chooseCorrection(err.id, 'keep')}>원문 유지</button>
                       </div>
-                      {verify[err.id]
-                        ? (verify[err.id].source === 'nikl' && <RuleBox rule={verify[err.id].rule} quote={verify[err.id].ruleQuote} />)
-                        : <RuleBox rule={aiRules[i]} pending={verifyStage === 'nikl' ? 'nikl' : 'ai'} />}
-                      <VerifyBox v={verify[err.id]} stage={verifyStage} />
+                      <details className="review-evidence">
+                        <summary>근거와 자료 대조 자세히 보기</summary>
+                        {renderEvidence(err, i)}
+                      </details>
                     </div>
                     <button className="btn-star" onClick={() => toggleSave(err)}>
                       {isItemSaved(err.wrong, err.right) ? '⭐' : '☆'}
@@ -494,8 +600,8 @@ export default function Home() {
               </div>
             )}
             <div className="copy-row">
-              <button className={`btn-copy${copied ? ' copied' : ''}`} onClick={copyText}>
-                {copied ? '✅ 복사되었습니다!' : '📋 교정된 글 복사하기'}
+              <button className={`btn-copy${copied === correction.text ? ' copied' : ''}`} onClick={copyText}>
+                {copied === correction.text ? '✅ 복사되었습니다!' : '📋 교정된 글 복사하기'}
               </button>
               {canShare && (
                 <button className="btn-share" onClick={shareText}>💬 카톡·문자로 보내기</button>
@@ -598,6 +704,7 @@ export default function Home() {
             </div>
           ))}
           <p className="tips-src">출처: 국립국어원 한글 맞춤법(문화체육관광부 고시 제2017-12호)·표준어 규정·표준국어대사전</p>
+        </div>
         </div>
       </main>
       <footer style={{ textAlign: 'center', padding: '20px' }}>
