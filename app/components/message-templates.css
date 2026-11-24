@@ -22,3 +22,6 @@
 .mt-count { margin: .35em 0 .75em; text-align: right; }
 .mt-status { margin: .5em 0 0; }
 .mt-status:empty { display: none; }
+
+.mt-button.mt-share { display:block; width:100%; margin-top:.65em; border:2px solid var(--accent,#6b3d18); background:var(--accent,#6b3d18); color:var(--paper,#fff); font-weight:700; }
+.mt-share-hint { margin:.6em 0 0; font-size:.85em; color:var(--ink-light,#3d2e1a); line-height:1.6; overflow-wrap:anywhere; }
