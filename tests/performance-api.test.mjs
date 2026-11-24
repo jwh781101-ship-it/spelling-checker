@@ -1,0 +1,40 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
+const root=fileURLToPath(new URL('../',import.meta.url));
+const read=p=>fs.readFileSync(root+'/'+p,'utf8');
+const load=async p=>import('data:text/javascript;base64,'+Buffer.from(read(p)).toString('base64'));
+const knowledge=await load('app/lib/knowledge.mjs'),corrections=await load('app/lib/corrections.mjs'),prompts=await load('app/lib/prompts.js');
+const rules=JSON.parse(read('app/data/kornorms.json')),cases=JSON.parse(read('app/data/usageCases.json'));
+const strip=s=>s.replace(/^import\s[\s\S]*?;\s*/gm,'').replace(/\bexport\s+/g,'');
+const names=['refToId','getRule','getCase','publicRule','quoteInRule','quoteInCase','knowledgeForText','knowledgeForItem','ruleContext','knowledgeSummary'];
+const norms=new Function('data','cases','makeKnowledgeIndex','retrieveKnowledge',strip(read('app/lib/kornorms.js'))+';return {'+names.join(',')+'}')(rules,cases,knowledge.makeKnowledgeIndex,knowledge.retrieveKnowledge);
+const deps={...knowledge,...corrections,...prompts,...norms,isForeignOrigin:()=>false,allowRequest:()=>true};
+const route=p=>new Function(...Object.keys(deps),strip(read(p))+';return POST')(...Object.values(deps));
+const check=route('app/api/check/route.js'),verify=route('app/api/verify/route.js');
+process.env.ANTHROPIC_API_KEY='test-placeholder';
+const request=body=>new Request('https://example.invalid/api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+const item={id:'e1',wrong:'할수',right:'할 수',context:'나는 할수 있다.',rule:'M42'};
+const good={id:'e1',found:true,originalCorrect:false,verdict:'일치',officialRight:'할 수',ruleId:'M42',ruleQuote:rules.rules.find(r=>r.id==='M42').rule,sources:[]};
+async function model(reply,fn,options={}){
+ const old=globalThis.fetch,sent=[];
+ globalThis.fetch=async(url,init)=>{assert.equal(url,'https://api.anthropic.com/v1/messages');sent.push(JSON.parse(init.body));return Response.json(options.failure?{error:{type:'model_not_found'}}:{content:[{type:'text',text:options.raw??JSON.stringify(reply)}],stop_reason:options.stop||'end_turn'},{status:options.failure?400:200});};
+ try{await fn(sent);}finally{globalThis.fetch=old;}
+}
+test('API 기본은 빠른 모델·원문 중복 출력 생략',()=>model({errors:[]},async sent=>{const r=await check(request({mode:'check',text:'올바른 글입니다.'}));assert.equal(r.status,200);assert.equal(sent[0].model,'claude-haiku-4-5-20251001');assert.ok(!sent[0].system.includes('"correctedText":'));assert.equal(JSON.parse((await r.json()).text).correctedText,'올바른 글입니다.');}));
+test('API 자료검색 포함 1차 검사는 기존 Sonnet',()=>model({errors:[]},async sent=>{await check(request({mode:'check',profile:'thorough',text:'올바른 글입니다.'}));assert.equal(sent[0].model,'claude-sonnet-4-6');}));
+test('API 사전은 기존 Sonnet과 응답 계약 유지',()=>model({word:'마음',meanings:[]},async sent=>{const r=await check(request({mode:'dict',text:'마음'}));assert.equal(sent[0].model,'claude-sonnet-4-6');assert.equal(JSON.parse((await r.json()).text).word,'마음');}));
+test('API 로컬 대조는 독립 Sonnet·검색도구 없음',()=>model({items:[good]},async sent=>{const r=await verify(request({stage:'local',items:[item]}));const v=(await r.json()).items[0];assert.equal(sent[0].model,'claude-sonnet-4-6');assert.equal(sent[0].tools,undefined);assert.equal(v.found,true);assert.equal(v.localOnly,true);}));
+test('API 선택형 공식 검색은 기존 도메인 제한 유지',()=>model({items:[good]},async sent=>{await verify(request({stage:'nikl',items:[item]}));assert.deepEqual(sent[0].tools[0].allowed_domains,['korean.go.kr']);await verify(request({stage:'web',items:[item]}));assert.equal(sent[1].tools[0].allowed_domains,undefined);}));
+test('API 검증 중복 ID는 성공으로 채우지 않음',()=>model({items:[good,good]},async()=>{const v=(await(await verify(request({stage:'local',items:[item]}))).json()).items[0];assert.equal(v.found,false);assert.equal(v.verificationFailed,true);assert.equal(v.officialRight,item.wrong);}));
+test('API 누락 ID는 원문 유지 및 실패 표시',()=>model({items:[]},async()=>{const v=(await(await verify(request({stage:'local',items:[item]}))).json()).items[0];assert.equal(v.source,'none');assert.equal(v.verificationFailed,true);assert.equal(v.officialRight,item.wrong);}));
+test('API 가짜 인용은 빠른 대조에서도 차단',()=>model({items:[{...good,ruleQuote:'존재하지 않는 근거를 인용한 가짜 문장입니다.'}]},async()=>{const v=(await(await verify(request({stage:'local',items:[item]}))).json()).items[0];assert.equal(v.found,false);assert.equal(v.officialRight,item.wrong);}));
+test('API 원문도 허용되면 원문 유지',()=>model({items:[{...good,originalCorrect:true}]},async()=>{const v=(await(await verify(request({stage:'local',items:[item]}))).json()).items[0];assert.equal(v.verdict,'둘다가능');assert.equal(v.officialRight,item.wrong);}));
+test('API 로컬 근거 불충분을 승인하지 않음',()=>model({items:[{...good,ruleId:'',ruleQuote:''}]},async()=>{const v=(await(await verify(request({stage:'local',items:[item]}))).json()).items[0];assert.equal(v.found,false);assert.equal(v.officialRight,item.wrong);}));
+test('API 모델 미지원 오류를 빈 정상 결과로 가장하지 않음',()=>model({},async()=>{const r=await check(request({mode:'check',text:'할수 있다.'}));assert.equal(r.status,502);assert.ok((await r.json()).error);},{failure:true}));
+test('API 출력 중단은 실패로 처리',()=>model({errors:[]},async()=>{const r=await check(request({mode:'check',text:'할수 있다.'}));assert.equal(r.status,502);},{stop:'max_tokens'}));
+test('API 잘린 JSON도 실패로 처리',()=>model({},async()=>{const r=await check(request({mode:'check',text:'할수 있다.'}));assert.equal(r.status,500);},{raw:'{"errors":['}));
+test('API 오류 목록이 없는 응답을 정상으로 표시하지 않음',()=>model({summary:'괜찮다'},async()=>{const r=await check(request({mode:'check',text:'할수 있다.'}));assert.equal(r.status,502);}));
+test('API 글 길이와 검사 프로필 검증',()=>model({},async sent=>{assert.equal((await check(request({mode:'check',text:'가'.repeat(1201)}))).status,400);assert.equal((await check(request({mode:'check',profile:'unknown',text:'할수 있다.'}))).status,400);assert.equal(sent.length,0);}));
+test('API 모델이 임의 지정한 적용·수동 상태를 차단',()=>model({errors:[{wrong:'할수',right:'할 수',start:2,end:4,anchorBefore:'다시 ',anchorAfter:' 있다.  ',confidence:'high',status:'applied',manual:'apply'}]},async()=>{const original='  할수 있다. 다시 할수 있다.  ';const data=JSON.parse((await(await check(request({mode:'check',text:original,contextBefore:'앞 문맥'}))).json()).text);assert.equal(data.correctedText,original);assert.equal(data.errors[0].start,original.lastIndexOf('할수'));assert.equal(data.errors[0].status,'pending');assert.equal(data.errors[0].manual,undefined);}));

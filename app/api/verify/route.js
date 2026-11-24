@@ -20,6 +20,7 @@ const SYSTEM_NIKL=`한국어 맞춤법 교정을 국립국어원 공식 자료�
 붙은 자료는 공식 규범·해설의 문맥 검색 발췌와 출처를 확인하여 직접 정리한 용례입니다. 단어 검색으로 같이 잡힌 무관한 조항도 있으므로 조건을 읽으세요.
 자료만으로 부족하면 web_search로 표준국어대사전, 국립국어원 온라인가나다 등 공식 자료를 확인하세요. 항목당 0~2회, 충분하면 검색하지 마세요.
 ${OUTPUT}`;
+const SYSTEM_LOCAL=`제공된 국립국어원 규범·해설과 선별 용례만으로 한국어 교정 제안을 독립 검토하세요. 검색 도구는 제공되지 않습니다. 자료와 문맥만으로 확정할 수 없으면 확인불가로 남기세요. 조항 번호나 첫 검사 AI의 설명만으로 승인하지 마세요.\n${OUTPUT}`;
 const SYSTEM_WEB=`공식 자료에서 확정하지 못한 교정을 웹 자료로 참고 검토하세요. 대학·언어 연구기관·신문사 교열 자료 등 신뢰 가능한 출처를 찾고 개인 블로그만으로 단정하지 마세요. ruleId,ruleQuote,caseId,caseQuote는 빈 문자열입니다.
 ${OUTPUT}`;
 const norm=s=>String(s||'').normalize('NFC').replace(/\s+/g,' ').trim();
@@ -41,20 +42,23 @@ export async function POST(request){
     if(items.length>10||items.some(x=>!x||typeof x.wrong!=='string'||typeof x.right!=='string'||x.wrong.length>120||x.right.length>150))return Response.json({error:'교정 항목의 형식이나 길이를 확인해 주세요.'},{status:400});
     if(!process.env.ANTHROPIC_API_KEY)return Response.json({error:'AI 서비스 설정을 확인해 주세요.'},{status:503});
     const list=items.map(x=>({id:x.id,wrong:x.wrong,right:x.right,context:String(x.context||'').slice(0,600),rule:String(x.rule||'').slice(0,60)}));
+    const isLocal=stage==='local';
     const isNikl=stage!=='web';
     const contexts=list.map(it=>isNikl?knowledgeForItem(it):{context:'',ruleIds:[],caseIds:[]});
-    const user=list.map((it,i)=>JSON.stringify(it)+'\n[해당 항목에 대응하는 규범·용례]\n'+contexts[i].context).join('\n\n---\n\n');
+    const shared=[],referenceIds=contexts.map(c=>{let i=shared.indexOf(c.context);if(i<0){i=shared.length;shared.push(c.context);}return i;});
+    const user=list.map((it,i)=>JSON.stringify({...it,reference:'자료'+referenceIds[i],allowedRuleIds:contexts[i].ruleIds,allowedCaseIds:contexts[i].caseIds})).join('\n')+'\n\n[참고 자료: 각 항목에 지정된 자료와 ID만 인용]\n'+shared.map((text,i)=>'[자료'+i+']\n'+text).join('\n\n---\n\n');
     const tool={type:'web_search_20250305',name:'web_search',max_uses:Math.min(8,list.length*2)};
     if(isNikl)tool.allowed_domains=['korean.go.kr'];
     const response=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',headers:{'Content-Type':'application/json','x-api-key':process.env.ANTHROPIC_API_KEY,'anthropic-version':'2023-06-01'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:6000,system:isNikl?SYSTEM_NIKL:SYSTEM_WEB,tools:[tool],messages:[{role:'user',content:user}]}),signal:AbortSignal.timeout(110000)
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:6000,system:isLocal?SYSTEM_LOCAL:(isNikl?SYSTEM_NIKL:SYSTEM_WEB),...(isLocal?{}:{tools:[tool]}),messages:[{role:'user',content:user}]}),signal:AbortSignal.any([request.signal,AbortSignal.timeout(isLocal?35000:110000)])
     });
     const data=await response.json();
     if(!response.ok||data.error||data.stop_reason==='max_tokens')return Response.json({error:'검증 결과를 끝까지 받지 못했습니다. 해당 제안은 원문으로 유지합니다.'},{status:502});
     const {out,seenUrls,citations}=readResult(data);
     const result=list.map((it,i)=>{
-      const r=out.find(x=>String(x.id)===String(it.id))||{};
+      const matches=out.filter(x=>x&&String(x.id)===String(it.id));
+      const r=matches.length===1?matches[0]:{};
       // 실제 검색 URL과 실제 검색 인용이 함께 확인된 출처만 인정합니다.
       const sources=filterSeenSources(r.sources,seenUrls,isNikl).filter(s=>norm(s.quote).length>=10&&citations.some(c=>normalizeSourceUrl(c.url)===s.url&&(norm(c.cited_text).includes(norm(s.quote))||norm(s.quote).includes(norm(c.cited_text)))));
       const id=isNikl?refToId(r.ruleId):null;
@@ -65,6 +69,8 @@ export async function POST(request){
       const localSources=c?(c.sources||[]).slice(0,2).map(s=>({title:'선별 용례 · '+s.title,url:s.url,quote:c.note+' (앱에서 정리한 요약)'})):[];
       const answer=normalizeVerification(it,r,{sources,rule,ruleQuote:rule?String(r.ruleQuote):'',localSources});
       answer.source=answer.found?(isNikl?'nikl':'web'):'none';
+      answer.localOnly=isLocal;
+      if(matches.length!==1)answer.verificationFailed=true;
       if(c)answer.evidence.caseId=c.id;
       return answer;
     });
