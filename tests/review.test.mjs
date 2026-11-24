@@ -1,0 +1,25 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { validLocation, locationIssue, reviewContext, reviewState, clampReviewIndex } from '../app/lib/review.mjs';
+const item = (start, end, wrong, right = '바름') => ({ id: 'one', start, end, wrong, right });
+test('반복 문자열은 지정된 위치만 표시', () => { const c = reviewContext('오타 하나 오타 둘', item(6, 8, '오타')); assert.equal(c.prefix, '오타 하나 '); assert.equal(c.target, '오타'); assert.equal(c.suffix, ' 둘'); });
+test('주변 문장을 유지', () => { const text = '앞 문장입니다. 틀린 말 뒤 문장입니다.'; const c = reviewContext(text, item(9, 11, '틀린')); assert.equal(c.prefix + c.target + c.suffix, text); });
+test('대상 앞뒤 공백 보존', () => { const c = reviewContext('앞  오타  뒤', item(3, 5, '오타')); assert.equal(c.prefix, '앞  '); assert.equal(c.suffix, '  뒤'); });
+test('이모지 뒤 UTF16 위치', () => { assert.equal(validLocation('😀오타', item(2, 4, '오타')), true); assert.equal(validLocation('😀오타', item(1, 3, '오타')), false); });
+test('문맥 경계에서 이모지 쪼개지 않음', () => { const c = reviewContext('😀오타😀', item(2, 4, '오타'), 1); assert.equal(c.prefix, '😀'); assert.equal(c.suffix, '😀'); });
+test('원문 불일치는 문맥 및 적용 금지', () => { const e = item(0, 2, '오타'); assert.equal(reviewContext('정상', e), null); assert.ok(locationIssue('정상', e, [e])); });
+test('중첩 항목은 양쪽 모두 금지', () => { const a = item(0, 3, '가나다'), b = item(1, 2, '나'); assert.ok(locationIssue('가나다', a, [a, b])); assert.ok(locationIssue('가나다', b, [a, b])); });
+test('인접 항목은 중첩 아님', () => { const a = item(0, 1, '가'), b = item(1, 2, '나'); assert.equal(locationIssue('가나', a, [a, b]), ''); });
+test('applied 상태는 수정 사용', () => { assert.equal(reviewState({ status: 'applied' }, null, 'done').selection, 'apply'); });
+test('manual keep은 applied보다 우선', () => { const s = reviewState({ status: 'applied', manual: 'keep' }, null, 'done'); assert.equal(s.selection, 'keep'); assert.match(s.label, /사용자 선택/); });
+test('pending 수동 사용은 선택하되 불확실성 유지', () => { const s = reviewState({ status: 'pending', manual: 'apply' }, null, 'nikl'); assert.equal(s.selection, 'apply'); assert.equal(s.uncertain, true); });
+test('안전하지 않으면 수동 적용도 미반영 표시', () => { assert.equal(reviewState({ status: 'applied', manual: 'apply' }, null, 'done', false).selection, 'keep'); });
+test('원문도 허용된 결과 표시', () => { assert.match(reviewState({ status: 'kept' }, { verdict: '둘다가능' }, 'done').label, /원문도 허용됨/); });
+test('긴 문맥은 양쪽 생략 및 길이 제한', () => { const c = reviewContext('가'.repeat(100) + '오타' + '나'.repeat(100), item(100, 102, '오타')); assert.equal(c.prefix.length, 70); assert.equal(c.suffix.length, 70); assert.ok(c.truncatedStart && c.truncatedEnd); });
+test('빈 목록과 줄어든 목록 인덱스 안전 보정', () => { assert.equal(clampReviewIndex(8, []), 0); assert.equal(clampReviewIndex(8, [1, 2]), 1); assert.equal(clampReviewIndex(-1, [1]), 0); });
+test('명시적 overlap 플래그 차단', () => { const e = { ...item(0, 1, '가'), overlap: true }; assert.ok(locationIssue('가', e, [e])); });
+
+
+test('문장 중심 문맥은 앞뒤 문장 경계를 지킨다', () => { const text = '첫 문장. 지금 오타 뒤입니다. 다음 문장.'; const start = text.indexOf('오타'); const c = reviewContext(text, item(start, start + 2, '오타'), 40, true); assert.equal(c.prefix + c.target + c.suffix, ' 지금 오타 뒤입니다.'); assert.ok(c.truncatedStart && c.truncatedEnd); });
+test('줄 경계는 현재 줄만 남긴다', () => { const text = '이전 줄\n현재 오타 문장\n다음 줄'; const start = text.indexOf('오타'); const c = reviewContext(text, item(start, start + 2, '오타'), 40, true); assert.equal(c.prefix + c.target + c.suffix, '현재 오타 문장'); });
+test('소수점과 URL의 점은 문장 경계가 아니다', () => { const text = '이전. 3.14 example.com 오타 확인. 다음.'; const start = text.indexOf('오타'); const c = reviewContext(text, item(start, start + 2, '오타'), 40, true); assert.equal(c.prefix + c.target + c.suffix, ' 3.14 example.com 오타 확인.'); });
