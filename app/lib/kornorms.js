@@ -35,5 +35,5 @@ export function knowledgeForItem(item) {
 }
 export const ruleContext = item => knowledgeForItem(item).blocks.map(b=>b.text);
 export function knowledgeSummary() {
-  return {version:'2026.11.24-1',source:data.source,fetchedAt:data.fetchedAt,rules:data.rules.length,counts:data.counts,cases:cases.length,sourceUrls:data.sourceUrls,attribution:data.attribution,copyrightPolicy:data.copyrightPolicy,imagePolicy:data.imagePolicy,untranscribedRules:data.rules.filter(r=>r.hasUntranscribedImages).length};
+  return {version:'2026.11.24-2',source:data.source,fetchedAt:data.fetchedAt,rules:data.rules.length,counts:data.counts,cases:cases.length,sourceUrls:data.sourceUrls,attribution:data.attribution,copyrightPolicy:data.copyrightPolicy,imagePolicy:data.imagePolicy,untranscribedRules:data.rules.filter(r=>r.hasUntranscribedImages).length};
 }

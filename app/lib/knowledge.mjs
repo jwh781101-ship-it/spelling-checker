@@ -1,5 +1,5 @@
 // 검색 전용: 원문을 통째로 모델에 넣거나 공개 웹 전체를 학습했다는 뜻이 아닙니다.
-export const KNOWLEDGE_VERSION = '2026.11.24-1';
+export const KNOWLEDGE_VERSION = '2026.11.24-2';
 export const compact = s => String(s || '').normalize('NFC').replace(/[\s\u00ad\u200b]+/gu, '');
 const unique = xs => [...new Set(xs)];
 const STOP = new Set(['그리고','그러나','합니다','있습니다','없습니다','오늘','나는','저는','그것은','이것은','정말','매우','우리','하기','하는','하고','있는','없는','이런','그런']);

@@ -152,6 +152,7 @@ export default function Home() {
     verifyRunRef.current++;
     requestControllerRef.current?.abort();
     setLoading(false); setProgress(''); setVerifyStage('done');
+    if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='fast');return map;});
     setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다.'});
     setResult(prev => prev ? {...prev, errors:prev.errors.map(e => e.status === 'pending' ? {...e,status:'needs_review'} : e)} : prev);
   }
@@ -392,7 +393,7 @@ export default function Home() {
             <button type="button" aria-pressed={checkProfile==='fast'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('fast')}>빠른 검사</button>
             <button type="button" aria-pressed={checkProfile==='thorough'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('thorough')}>자료 검색 포함</button>
           </div>
-          <p>{checkProfile==='fast'?'빠른 AI 검사 후 제공된 공식 자료로 따로 대조합니다. 실시간 웹 검색 없이 확인되지 않은 제안은 원문을 유지합니다.':'공식 자료와 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
+          <p>{checkProfile==='fast'?'공식 자료 대조 포함, 실시간 웹 검색 생략. 근거가 부족하면 원문을 유지합니다.':'공식 자료와 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
         </section>
         <div hidden={!showTemplates} className="phrase-panel">
           <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>

@@ -33,4 +33,4 @@ export const SYSTEM_FAST_CHECK = SYSTEM_CHECK
   .replace('],"summary":"짧은 검사 요약"}', ']}')
   .replace('"explain":"쉬운 설명"', '"explain":"짧은 한 문장 설명"')
   .replace('- correctedText는 원문 그대로입니다. 실제 적용은 서버/앱이 검증 후 위치 기반으로 합니다.', '- 실제 적용은 별도의 자료 대조를 마친 뒤 서버/앱이 위치 기반으로 합니다.')
-  + `\n- 빠른 검사 출력에는 errors만 포함하세요. correctedText·originalText·summary·context를 되풀이하지 마세요. 원문과 실제 문맥은 서버가 보존합니다.`;
+  + `\n- 빠른 검사 출력에는 errors만 포함하세요. correctedText·originalText·summary·context를 되풀이하지 마세요. 원문과 실제 문맥은 서버가 보존합니다.\n- right는 원문의 활용형과 말투를 유지한 최소 수정으로 쓰세요. 예를 들어 됬어요는 됐어요로 고치고 불필요하게 되었다/되었어요로 풀어쓰지 마세요. 설명 근거를 모르면 추측하지 말고 explain을 빈 문자열로 두세요.`;
