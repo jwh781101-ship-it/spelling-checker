@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { shareOccasionText } from '../app/lib/sharing.mjs';
+test('편집한 문구의 공백과 줄바꿈을 그대로 공유',async()=>{let payload;const text=' 생신 축하드립니다.\n늘 평안하세요. ';const r=await shareOccasionText(text,{share:async p=>{payload=p;}});assert.deepEqual(payload,{text});assert.equal(r.status,'shared');assert.doesNotMatch(r.message,/전송했습니다|발송했습니다|보냈습니다/);});
+test('공유 지원 확인에는 같은 텍스트만 전달',async()=>{let supported,shared;await shareOccasionText('축하해요',{canShare:p=>{supported=p;return true;},share:async p=>{shared=p;}});assert.deepEqual(supported,shared);assert.deepEqual(shared,{text:'축하해요'});});
+test('공유 취소는 오류나 발송 성공이 아니며 자동 복사하지 않음',async()=>{let copied=false;const r=await shareOccasionText('감사합니다',{share:async()=>{throw {name:'AbortError'}},clipboard:{writeText:async()=>{copied=true}}});assert.equal(r.status,'cancelled');assert.equal(copied,false);});
+test('권한 거부 시 공유를 우회하여 복사하지 않음',async()=>{let copied=false;const r=await shareOccasionText('감사합니다',{share:async()=>{throw {name:'NotAllowedError'}},clipboard:{writeText:async()=>{copied=true}}});assert.equal(r.status,'error');assert.equal(copied,false);});
+test('기타 공유 실패를 발송 성공으로 표시하지 않음',async()=>{const r=await shareOccasionText('감사합니다',{share:async()=>{throw new Error('failed')}});assert.equal(r.status,'error');assert.match(r.message,/열지 못/);});
+test('공유 API 미지원이면 복사 후 직접 붙여넣기 안내',async()=>{let value;const r=await shareOccasionText('수정한 문구',{clipboard:{writeText:async text=>{value=text;}}});assert.equal(r.status,'copied');assert.equal(value,'수정한 문구');assert.match(r.message,/붙여넣어/);});
+test('canShare가 false이면 native share를 호출하지 않음',async()=>{let called=false;const r=await shareOccasionText('위로합니다',{canShare:()=>false,share:async()=>{called=true},clipboard:{writeText:async()=>{}}});assert.equal(called,false);assert.equal(r.status,'copied');});
+test('공유 지원 여부 확인 오류는 자동 복사로 우회하지 않음',async()=>{let copied=false;const r=await shareOccasionText('위로합니다',{share:async()=>{},canShare:()=>{throw new Error('failed')},clipboard:{writeText:async()=>{copied=true}}});assert.equal(r.status,'error');assert.equal(copied,false);});
+test('공유와 클립보드 둘 다 없으면 직접 선택 안내',async()=>{const r=await shareOccasionText('감사합니다',{});assert.equal(r.status,'unsupported');assert.match(r.message,/직접 선택/);});
+test('클립보드 실패 시 복사 성공을 표시하지 않음',async()=>{const r=await shareOccasionText('감사합니다',{clipboard:{writeText:async()=>{throw new Error('denied')}}});assert.equal(r.status,'error');assert.doesNotMatch(r.message,/복사했습니다/);});
+test('빈 문구는 공유나 복사를 시도하지 않음',async()=>{let called=false;const p={share:async()=>{called=true}};for(const text of ['', ' \n ',null])assert.equal((await shareOccasionText(text,p)).status,'empty');assert.equal(called,false);});

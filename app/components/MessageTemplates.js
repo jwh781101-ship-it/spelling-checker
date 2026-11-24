@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { categories, filterTemplates } from '../data/messageTemplates.mjs';
+import { shareOccasionText } from '../lib/sharing.mjs';
 import './message-templates.css';
 
 export default function MessageTemplates({ onUse, onClose }) {
@@ -11,6 +12,8 @@ export default function MessageTemplates({ onUse, onClose }) {
   const [pending, setPending] = useState(null);
   const [copyStatus, setCopyStatus] = useState('');
   const revision = useRef(0);
+  const shareInFlight = useRef(false);
+  const [isSharing, setIsSharing] = useState(false);
   const editorRef = useRef(null);
   const textareaRef = useRef(null);
   const confirmRef = useRef(null);
@@ -68,6 +71,23 @@ export default function MessageTemplates({ onUse, onClose }) {
     }
   }
 
+  async function shareBody() {
+    if (shareInFlight.current || !body.trim()) return;
+    const currentRevision = revision.current;
+    shareInFlight.current = true;
+    setIsSharing(true);
+    setCopyStatus('');
+    try {
+      const result = await shareOccasionText(body, navigator);
+      if (revision.current === currentRevision) setCopyStatus(result.message);
+    } catch {
+      if (revision.current === currentRevision) setCopyStatus('공유창을 열지 못했습니다. 문구 복사 버튼을 이용해 주세요.');
+    } finally {
+      shareInFlight.current = false;
+      setIsSharing(false);
+    }
+  }
+
   return (
     <section className="mt-root" aria-label="경조사 문구 예문">
       <div className="mt-heading">
@@ -113,6 +133,8 @@ export default function MessageTemplates({ onUse, onClose }) {
             <button type="button" className="mt-button" disabled={!body.trim()} onClick={copyBody}>문구 복사</button>
             <button type="button" className="mt-button mt-primary" disabled={!body.trim() || typeof onUse !== 'function'} onClick={() => onUse(body)}>맞춤법 검사에 넣기</button>
           </div>
+          <button type="button" className="mt-button mt-share" disabled={!body.trim() || isSharing} onClick={shareBody}>{isSharing ? '공유창 여는 중...' : '카톡·문자로 보내기'}</button>
+          <p className="mt-share-hint">공유창에서 카카오톡이나 문자 앱을 선택하고, 받는 사람과 내용을 확인한 뒤 직접 전송해 주세요.</p>
           <p className="mt-status" role="status" aria-live="polite">{copyStatus}</p>
         </div>
       )}
