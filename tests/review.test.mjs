@@ -19,3 +19,7 @@ test('긴 문맥은 양쪽 생략 및 길이 제한', () => { const c = reviewCo
 test('빈 목록과 줄어든 목록 인덱스 안전 보정', () => { assert.equal(clampReviewIndex(8, []), 0); assert.equal(clampReviewIndex(8, [1, 2]), 1); assert.equal(clampReviewIndex(-1, [1]), 0); });
 test('명시적 overlap 플래그 차단', () => { const e = { ...item(0, 1, '가'), overlap: true }; assert.ok(locationIssue('가', e, [e])); });
 
+
+test('문장 중심 문맥은 앞뒤 문장 경계를 지킨다', () => { const text = '첫 문장. 지금 오타 뒤입니다. 다음 문장.'; const start = text.indexOf('오타'); const c = reviewContext(text, item(start, start + 2, '오타'), 40, true); assert.equal(c.prefix + c.target + c.suffix, ' 지금 오타 뒤입니다.'); assert.ok(c.truncatedStart && c.truncatedEnd); });
+test('줄 경계는 현재 줄만 남긴다', () => { const text = '이전 줄\n현재 오타 문장\n다음 줄'; const start = text.indexOf('오타'); const c = reviewContext(text, item(start, start + 2, '오타'), 40, true); assert.equal(c.prefix + c.target + c.suffix, '현재 오타 문장'); });
+test('소수점과 URL의 점은 문장 경계가 아니다', () => { const text = '이전. 3.14 example.com 오타 확인. 다음.'; const start = text.indexOf('오타'); const c = reviewContext(text, item(start, start + 2, '오타'), 40, true); assert.equal(c.prefix + c.target + c.suffix, ' 3.14 example.com 오타 확인.'); });

@@ -8,10 +8,25 @@ export function locationIssue(original, e, errors = []) {
   if (typeof e.right !== 'string' || e.right === e.wrong) return '사용할 수정 제안을 확인할 수 없어요.';
   return '';
 }
-export function reviewContext(original, e, radius = 70) {
+export function reviewContext(original, e, radius = 70, sentenceOnly = false) {
   if (!validLocation(original, e)) return null;
   const size = Number.isFinite(radius) ? Math.max(0, Math.floor(radius)) : 70;
   let left = Math.max(0, e.start - size), right = Math.min(original.length, e.end + size);
+  if (sentenceOnly) {
+    // Only punctuation followed by whitespace/end is a sentence boundary.
+    // Preserve all whitespace within the selected excerpt and never cut the target.
+    const boundary = /[.!?。！？](?=\s|$)|\r\n|[\r\n]/g;
+    let m;
+    while ((m = boundary.exec(original)) !== null) {
+      const end = m.index + m[0].length;
+      if (end <= e.start && end > left) left = end;
+      if (m.index >= e.end && m.index < right) {
+        right = /[\r\n]/.test(m[0]) ? m.index : end;
+        break;
+      }
+      if (m.index >= right) break;
+    }
+  }
   if (left > 0 && /[\uDC00-\uDFFF]/.test(original[left]) && /[\uD800-\uDBFF]/.test(original[left - 1])) left--;
   if (right < original.length && /[\uD800-\uDBFF]/.test(original[right - 1]) && /[\uDC00-\uDFFF]/.test(original[right])) right++;
   return { prefix: original.slice(left, e.start), target: original.slice(e.start, e.end), suffix: original.slice(e.end, right), truncatedStart: left > 0, truncatedEnd: right < original.length };

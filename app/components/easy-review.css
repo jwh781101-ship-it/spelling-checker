@@ -16,3 +16,5 @@
 .er-review button:focus-visible, .er-details summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .er-details { border-top: 1px solid var(--border); padding-top: .7rem; overflow-wrap: anywhere; }
 .er-details summary { cursor: pointer; font-weight: 700; min-height: 48px; display: list-item; }
+
+.er-hint { font-size: .85rem; line-height: 1.5; }
