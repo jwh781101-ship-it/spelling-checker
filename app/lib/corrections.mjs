@@ -16,9 +16,16 @@ export function anchorEdits(original, candidates = []) {
       for (let i = original.indexOf(e.wrong); i !== -1; i = original.indexOf(e.wrong, i + 1)) occurrences.push(i);
       const matched = occurrences.filter(anchorsMatch);
       if (matched.length === 1) start = matched[0];
+      // 유일한 원문 일치는 잘못 생성된 앞뒤 단서와 무관하게 위치가 확정됩니다.
+      else if (occurrences.length === 1) start = occurrences[0];
     }
     e.start = start < 0 ? null : start;
     e.end = start < 0 ? null : start + e.wrong.length;
+    // 다음 처리 단계에는 AI가 쓴 단서가 아니라 확인된 원문의 단서를 전달합니다.
+    if (start >= 0) {
+      e.anchorBefore = original.slice(Math.max(0, start - 20), start);
+      e.anchorAfter = original.slice(e.end, e.end + 20);
+    }
     e.status = start < 0 || e.status === 'needs_review' ? 'needs_review' : (e.status || 'pending');
     e.id = 'edit-' + (start < 0 ? 'unresolved' : start + '-' + e.end) + '-' + errors.length;
     errors.push(e);

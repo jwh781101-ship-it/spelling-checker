@@ -31,3 +31,11 @@ test('띄어쓰기를 지워 두 표현을 같다고 보지 않는다',()=>{cons
 test('원문 오류 여부를 판단하지 못했으면 자동 반영하지 않는다',()=>{const r=normalizeVerification(item,{...yes,originalCorrect:null},evidence);assert.equal(r.found,false);});
 test('의미가 서로 다른 복수 정답 문자열은 교정문에 넣지 않는다',()=>{const r=normalizeVerification(item,{...yes,verdict:'부분',officialRight:'할수 있다 / 할 수 있다'},evidence);assert.equal(r.found,false);});
 test('완전한 JSON·코드블록 해석, 불완전 응답 거부',()=>{assert.deepEqual(parseModelJSON('```json\n{"items":[]}\n```'),{items:[]});assert.throws(()=>parseModelJSON('{"items":['));});
+test('여러 오류가 있는 문맥에서도 대상 오탈자의 용례를 먼저 검색',()=>{
+ const r=retrieveKnowledge(index,'나는 할수 있다. 다 됬다. 나무잎이 떨어졌다. 다시 할수 있다.',{words:['됬다','됐다'],maxCases:2});
+ assert.ok(r.caseIds.includes('C035'));assert.ok(r.ruleIds.includes('M35'));
+});
+test('대상 사이시옷 교정은 다른 띄어쓰기 용례에 밀리지 않는다',()=>{
+ const r=retrieveKnowledge(index,'나는 할수 있다. 다 됬다. 나무잎이 떨어졌다. 다시 할수 있다.',{words:['나무잎','나뭇잎'],maxCases:2});
+ assert.ok(r.caseIds.includes('C032'));assert.ok(r.ruleIds.includes('M30'));
+});

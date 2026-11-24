@@ -46,12 +46,14 @@ export function retrieveKnowledge(index, text, options = {}) {
   const maxChars = options.maxChars ?? 14000, maxDocChars = options.maxDocChars ?? 2300;
   const keys = unique([...(options.words || []).map(compact).filter(x=>x.length>=2), ...searchTerms(text).map(compact)]).slice(0,120);
   const target = compact(text);
-  const matchedCases = index.cases.map(c => ({c,score:c._keys.reduce((n,k)=>n+(target.includes(k)?Math.min(k.length,8):0),0)}))
+  const focus = unique((options.words || []).map(compact).filter(x=>x.length>=2));
+  const matchedCases = index.cases.map(c => ({c,score:c._keys.reduce((n,k)=>n+(target.includes(k)?Math.min(k.length,8):0)+focus.reduce((m,w)=>m+((w.includes(k)||k.includes(w))?100:0),0),0)}))
     .filter(x=>x.score>0).sort((a,b)=>b.score-a.score).slice(0,maxCases);
   const priorities = unique([...(options.ruleIds || []),...matchedCases.flatMap(x=>x.c.ruleIds || [])]);
   const frequencies = keys.map(k => index.rules.reduce((n,r)=>n+Number(r._body.includes(k)),0));
   const ranks = index.rules.map(r => {
     let score = priorities.includes(r.id) ? 100 : 0;
+    for(const word of focus)if(r._body.includes(word))score+=30;
     for(let i=0;i<keys.length;i++) if(r._body.includes(keys[i])) score += Math.log(1+index.rules.length/(1+frequencies[i])) * Math.min(keys[i].length,5);
     if (['M2','M41','M42','M47'].includes(r.id)) score += .1;
     // 발음법/로마자는 표기법으로 무조건 적용하지 않습니다.

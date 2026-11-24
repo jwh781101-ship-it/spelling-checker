@@ -44,3 +44,19 @@ test('위치와 앵커 충돌하고 일치 위치가 여럿이면 보류', () =>
   const [e] = anchorEdits('가나 가다 가다', [{ wrong: '가', right: '고', start: 0, end: 1, anchorAfter: '다' }]);
   assert.equal(e.start, null); assert.equal(e.status, 'needs_review');
 });
+
+test('유일한 원문 일치는 잘못 생성된 앞뒤 단서로 잃지 않는다',()=>{
+ const [e]=a('나무잎이 떨어졌다.',[{wrong:'나무잎',right:'나뭇잎',start:7,end:10,anchorBefore:'없는 단서',anchorAfter:'잘못된 단서'}]);
+ assert.equal(e.start,0);assert.equal(e.status,'pending');
+});
+test('확정 위치의 단서는 실제 원문에서 다시 생성한다',()=>{
+ const original='다 됬다. 나무잎이 떨어졌다.';
+ const [e]=a(original,[{wrong:'나무잎',right:'나뭇잎',anchorBefore:'다 됐다. '}]);
+ assert.equal(e.start,6);assert.equal(e.anchorBefore,'다 됬다. ');assert.equal(e.anchorAfter,'이 떨어졌다.');
+});
+test('청크 위치를 전역 위치로 옮겨도 확정한 단서를 보존한다',()=>{
+ const local='나무잎이 떨어졌다.';const original='앞 문장. '+local+' 뒤 문장.';
+ const [e]=a(local,[{wrong:'나무잎',right:'나뭇잎',anchorBefore:'없는 단서'}]);
+ const [global]=a(original,[{...e,start:e.start+6,end:e.end+6}]);
+ assert.equal(global.start,6);assert.equal(global.status,'pending');
+});
