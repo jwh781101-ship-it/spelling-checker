@@ -1,0 +1,29 @@
+name: Web accuracy regression
+on:
+  push:
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/web-quality.yml'
+  pull_request:
+    paths:
+      - 'app/**'
+      - 'tests/**'
+      - 'package.json'
+      - '.github/workflows/web-quality.yml'
+  workflow_dispatch:
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --ignore-scripts --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
