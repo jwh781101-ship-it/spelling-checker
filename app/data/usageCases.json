@@ -1,0 +1,969 @@
+[
+  {
+    "id": "C001",
+    "title": "예쁘다와 이쁘다",
+    "keywords": [
+      "예쁘다",
+      "이쁘다",
+      "예쁜",
+      "이쁜"
+    ],
+    "note": "두 표현은 복수 표준어이므로 어느 하나를 다른 하나로 강제 교정하지 않는다.",
+    "ruleIds": [],
+    "sources": [
+      {
+        "title": "국립국어원 2015년 표준어 추가 결과",
+        "url": "https://www.korean.go.kr/front/board/boardStandardView.do?b_seq=576&board_id=6&mn_id=19",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C002",
+    "title": "푸르다와 푸르르다",
+    "keywords": [
+      "푸르다",
+      "푸르르다",
+      "푸른",
+      "푸르른"
+    ],
+    "note": "둘 다 표준어이나 뜻이나 어감의 차이가 있어 일괄 치환하지 않는다.",
+    "ruleIds": [],
+    "sources": [
+      {
+        "title": "국립국어원 2015년 표준어 추가 결과",
+        "url": "https://www.korean.go.kr/front/board/boardStandardView.do?b_seq=576&board_id=6&mn_id=19",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C003",
+    "title": "마와 말아",
+    "keywords": [
+      "잊지 마",
+      "잊지 말아",
+      "하지 마라",
+      "하지 말아라"
+    ],
+    "note": "말다의 명령형에서 마와 말아, 마라와 말아라가 모두 쓰인다.",
+    "ruleIds": [],
+    "sources": [
+      {
+        "title": "국립국어원 2015년 표준어 추가 결과",
+        "url": "https://www.korean.go.kr/front/board/boardStandardView.do?b_seq=576&board_id=6&mn_id=19",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C004",
+    "title": "노라네와 노랗네",
+    "keywords": [
+      "노라네",
+      "노랗네",
+      "동그라네",
+      "동그랗네"
+    ],
+    "note": "해당 형용사에 -네가 붙는 형태는 ㅎ이 남거나 빠진 형태가 모두 인정된다.",
+    "ruleIds": [],
+    "sources": [
+      {
+        "title": "국립국어원 2015년 표준어 추가 결과",
+        "url": "https://www.korean.go.kr/front/board/boardStandardView.do?b_seq=576&board_id=6&mn_id=19",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C005",
+    "title": "보조 용언 보다",
+    "keywords": [
+      "먹어 보다",
+      "먹어보다",
+      "먹어 보았다",
+      "먹어보았다"
+    ],
+    "note": "시험 삼아 먹는 뜻의 보조 용언은 띄어 씀이 원칙이고 붙여 씀도 허용된다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C006",
+    "title": "보조 용언 버리다",
+    "keywords": [
+      "깨뜨려 버렸다",
+      "깨뜨려버렸다",
+      "버려 버렸다",
+      "버려버렸다"
+    ],
+    "note": "앞말에 -어로 이어진 보조 용언은 조건에 따라 띄거나 붙일 수 있다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C007",
+    "title": "아는 체하다",
+    "keywords": [
+      "아는 체하다",
+      "아는체하다",
+      "아는 척한다",
+      "아는척한다"
+    ],
+    "note": "체하다나 척하다가 보조 용언으로 쓰인 이 구성은 띄어 씀이 원칙이며 붙여 씀도 허용된다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C008",
+    "title": "올 듯하다",
+    "keywords": [
+      "올 듯하다",
+      "올듯하다",
+      "할 만하다",
+      "할만하다"
+    ],
+    "note": "해당 보조 용언 구성에서는 앞말과 띄는 것이 원칙이고 붙여 쓰는 것도 가능하다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C009",
+    "title": "조사 뒤 보조 용언",
+    "keywords": [
+      "읽어도 보고",
+      "읽어도보고",
+      "읽어는 보았다",
+      "읽어는보았다"
+    ],
+    "note": "앞말에 조사가 끼면 뒤의 보조 용언을 띄어 쓴다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C010",
+    "title": "복합 본용언 뒤 보조 용언",
+    "keywords": [
+      "덤벼들어 보아라",
+      "덤벼들어보아라",
+      "쫓아내 버렸다",
+      "쫓아내버렸다"
+    ],
+    "note": "제시된 긴 복합 본용언 뒤의 보조 용언은 띄어 쓴다. 다만 활용형이 두 음절인 복합 용언은 별도 허용이 있다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C011",
+    "title": "두 음절 복합 용언의 예외",
+    "keywords": [
+      "나가 버렸다",
+      "나가버렸다",
+      "빛내 준다",
+      "빛내준다"
+    ],
+    "note": "복합 용언이라도 활용형이 두 음절인 이 경우 보조 용언을 붙이는 것도 허용된다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C012",
+    "title": "종결 어미 뒤 보다",
+    "keywords": [
+      "먹나 보다",
+      "먹나보다",
+      "갈까 보다",
+      "갈까보다"
+    ],
+    "note": "-나, -ㄹ까 뒤의 보다를 무조건 앞말에 붙이지 않고 띄어 쓴다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C013",
+    "title": "거듭된 보조 용언",
+    "keywords": [
+      "읽어 볼 만하다",
+      "읽어볼 만하다",
+      "읽어볼만하다"
+    ],
+    "note": "보조 용언이 이어질 때는 이 예에서 앞의 보조 용언만 붙일 수 있다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C014",
+    "title": "도와드리다",
+    "keywords": [
+      "도와드리다",
+      "도와 드리다",
+      "도와드린다",
+      "도와 드린다"
+    ],
+    "note": "사전 표제어 도와드리다는 한 단어로 붙여 쓴다. 규정 예시와 함께 붙은 주석을 살핀다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C015",
+    "title": "구 뒤의 싶어 하다",
+    "keywords": [
+      "먹고 싶어 하다",
+      "먹고 싶어하다",
+      "마음에 들어 하다",
+      "마음에 들어하다"
+    ],
+    "note": "구 전체에 -어 하다가 결합하는 이 경우에는 하다를 띄어 쓴다.",
+    "ruleIds": [
+      "M47"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 보조 용언 띄어쓰기",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324190&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C016",
+    "title": "수 의존 명사",
+    "keywords": [
+      "할 수 있다",
+      "할수 있다",
+      "볼 수 있다",
+      "볼수 있다"
+    ],
+    "note": "가능성을 나타내는 의존 명사 수는 앞말과 띄어 쓴다.",
+    "ruleIds": [
+      "M42"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C017",
+    "title": "것 의존 명사",
+    "keywords": [
+      "아는 것",
+      "아는것",
+      "할 것",
+      "할것"
+    ],
+    "note": "관형어 뒤 의존 명사 것은 앞말과 띄어 쓴다.",
+    "ruleIds": [
+      "M42"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C018",
+    "title": "지 의존 명사",
+    "keywords": [
+      "떠난 지",
+      "떠난지",
+      "떠난 지가",
+      "떠난지가"
+    ],
+    "note": "시간 경과를 나타내는 의존 명사 지는 앞말과 띄어 쓴다.",
+    "ruleIds": [
+      "M42"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C019",
+    "title": "조사 만큼과 의존 명사 만큼",
+    "keywords": [
+      "먹을 만큼",
+      "먹을만큼",
+      "너만큼",
+      "너 만큼"
+    ],
+    "note": "관형어 뒤 의존 명사 만큼은 띄고 체언 뒤 조사 만큼은 붙인다.",
+    "ruleIds": [
+      "M41",
+      "M42"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C020",
+    "title": "조사만 붙여 쓰기",
+    "keywords": [
+      "너만",
+      "너 만",
+      "꽃으로만",
+      "꽃 으로만"
+    ],
+    "note": "조사는 앞말에 붙인다. 띄어 쓴 너 만을 한 단어로 볼지 여부는 주변 문맥도 살핀다.",
+    "ruleIds": [
+      "M41"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C021",
+    "title": "한 개와 한 대",
+    "keywords": [
+      "한 개",
+      "한개",
+      "한 대",
+      "한대",
+      "한 마리",
+      "한마리"
+    ],
+    "note": "단위 명사는 수를 나타내는 관형사 뒤에서 띄어 쓴다.",
+    "ruleIds": [
+      "M43"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C022",
+    "title": "숫자와 단위",
+    "keywords": [
+      "10 개",
+      "10개",
+      "7 미터",
+      "7미터",
+      "80 원",
+      "80원"
+    ],
+    "note": "숫자와 단위 명사는 띄어 쓰는 것이 원칙이나 붙여 쓰는 것도 허용된다.",
+    "ruleIds": [
+      "M43"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C023",
+    "title": "순서와 단위",
+    "keywords": [
+      "삼 학년",
+      "삼학년",
+      "육 층",
+      "육층",
+      "두 시",
+      "두시"
+    ],
+    "note": "순서를 나타내거나 규정에서 다룬 시각 등의 단위는 붙여 쓰는 것도 허용된다.",
+    "ruleIds": [
+      "M43"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C024",
+    "title": "만 단위 수 표기",
+    "keywords": [
+      "12억 3456만 7898",
+      "12억3456만7898",
+      "십이억 삼천사백오십육만"
+    ],
+    "note": "큰 수는 만 단위로 나누어 띄어 쓴다.",
+    "ruleIds": [
+      "M44"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C025",
+    "title": "성과 이름의 구분",
+    "keywords": [
+      "남궁억",
+      "남궁 억",
+      "독고준",
+      "독고 준"
+    ],
+    "note": "성명은 붙여 쓰는 것이 원칙이지만 성과 이름을 분명히 구분할 때는 띄어 쓸 수 있다.",
+    "ruleIds": [
+      "M48"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C026",
+    "title": "고유 명사의 단위별 띄기",
+    "keywords": [
+      "대한 중학교",
+      "대한중학교",
+      "한국 대학교 사범 대학",
+      "한국대학교 사범대학"
+    ],
+    "note": "성명 외 고유 명사는 단어별 띄기가 원칙이며 뜻을 해치지 않는 단위별 띄기도 허용된다.",
+    "ruleIds": [
+      "M49"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C027",
+    "title": "전문 용어의 붙임 허용",
+    "keywords": [
+      "만성 골수성 백혈병",
+      "만성골수성백혈병",
+      "중거리 탄도 유도탄",
+      "중거리탄도유도탄"
+    ],
+    "note": "전문 용어는 단어별 띄기가 원칙이며 붙여 쓰는 것도 허용된다.",
+    "ruleIds": [
+      "M50"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C028",
+    "title": "안되다와 안 되다",
+    "keywords": [
+      "안되다",
+      "안 되다",
+      "안돼",
+      "안 돼",
+      "안됐다",
+      "안 됐다"
+    ],
+    "note": "일이 잘 이루어지지 않는 뜻의 안되다와 되다를 부정하는 안 되다는 맥락을 구별한다.",
+    "ruleIds": [
+      "M2"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 안되다와 안 되다",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324290&searchCondition=&searchKeyword=",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C029",
+    "title": "수량에 못 미침",
+    "keywords": [
+      "만원이 안 된다",
+      "만 원이 안 된다",
+      "명이 안 된다",
+      "돈이 안 되는"
+    ],
+    "note": "제시된 수량에 이르지 않는다는 뜻에서 되다의 부정이라면 안 된다처럼 띄어 쓴다. 수량 표현 전부를 기계적으로 바꾸지는 않는다.",
+    "ruleIds": [
+      "M2"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 수량과 안 되다",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=216&pageIndex=1&qna_seq=324260",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C030",
+    "title": "이따가와 있다가",
+    "keywords": [
+      "이따가",
+      "있다가",
+      "잠시 있다가",
+      "이따가 만나"
+    ],
+    "note": "이따가는 조금 지난 뒤를 뜻하고 있다가는 있다의 활용형이다. 주변 뜻을 보고 구분한다.",
+    "ruleIds": [
+      "M57"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "국립국어원 있다가와 이따가",
+        "url": "https://www.korean.go.kr/front/mcfaq/mcfaqView.do?mcfaq_seq=6067&mn_id=217",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C031",
+    "title": "조금 있다가",
+    "keywords": [
+      "조금 있다가",
+      "조금 이따가",
+      "얼마 안 있다가",
+      "얼마 안 이따가"
+    ],
+    "note": "조금 있다가는 가능하며 조금 이따가는 의미가 겹쳐 어색하다. 무조건적인 표기 치환보다 문맥을 살핀다.",
+    "ruleIds": [
+      "M57"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      },
+      {
+        "title": "온라인가나다 있다가와 이따가",
+        "url": "https://www.korean.go.kr/front/onlineQna/onlineQnaView.do?mn_id=73&pageIndex=1&qna_seq=332059",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C032",
+    "title": "사이시옷 나뭇잎",
+    "keywords": [
+      "나뭇잎",
+      "나무잎",
+      "깻잎",
+      "깨잎",
+      "뒷일",
+      "뒤일"
+    ],
+    "note": "규정에 열거된 나뭇잎, 깻잎, 뒷일에는 사이시옷을 적는다. 모든 합성어에 일반화하지 않는다.",
+    "ruleIds": [
+      "M30"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C033",
+    "title": "사이시옷 바닷가",
+    "keywords": [
+      "바닷가",
+      "바다가",
+      "찻집",
+      "차집",
+      "햇볕",
+      "해볕"
+    ],
+    "note": "바닷가, 찻집, 햇볕에는 사이시옷을 적는다. 바다가처럼 별도 형태로도 쓰이는 문자열은 문맥을 확인한다.",
+    "ruleIds": [
+      "M30"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C034",
+    "title": "한자어 사이시옷 예외",
+    "keywords": [
+      "횟수",
+      "회수",
+      "숫자",
+      "수자",
+      "셋방",
+      "세방"
+    ],
+    "note": "횟수, 숫자, 셋방은 규정에 열거된 두 음절 한자어 사례다. 회수는 다른 뜻의 단어일 수 있어 자동 변경하지 않는다.",
+    "ruleIds": [
+      "M30"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C035",
+    "title": "되어와 돼",
+    "keywords": [
+      "되어",
+      "돼",
+      "되었다",
+      "됐다",
+      "됬다"
+    ],
+    "note": "돼는 되어의 준말이고 됐다는 되었다의 준말이다. 되어와 돼를 서로 오류로 취급하지 않는다.",
+    "ruleIds": [
+      "M35"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C036",
+    "title": "뵈어와 봬",
+    "keywords": [
+      "뵈어",
+      "봬",
+      "뵈었다",
+      "뵀다",
+      "봬요",
+      "뵈어요"
+    ],
+    "note": "봬는 뵈어의 준말이다. 뵈어요와 봬요를 모두 허용한다.",
+    "ruleIds": [
+      "M35"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C037",
+    "title": "보아와 봐",
+    "keywords": [
+      "보아",
+      "봐",
+      "보았다",
+      "봤다"
+    ],
+    "note": "보아와 봐, 보았다와 봤다는 본말과 준말이므로 둘 다 보존한다.",
+    "ruleIds": [
+      "M35"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "allowed"
+  },
+  {
+    "id": "C038",
+    "title": "된소리 표기",
+    "keywords": [
+      "어깨",
+      "어깨가",
+      "국수",
+      "국쑤",
+      "몹시",
+      "몹씨"
+    ],
+    "note": "어깨는 된소리로 적지만 국수와 몹시는 소리와 달리 된소리 글자로 적지 않는다.",
+    "ruleIds": [
+      "M5"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "correction"
+  },
+  {
+    "id": "C039",
+    "title": "가치와 같이",
+    "keywords": [
+      "같이",
+      "가치",
+      "굳이",
+      "구지",
+      "닫히다",
+      "다치다"
+    ],
+    "note": "함께의 뜻은 같이, 일부러의 뜻은 굳이로 적는다. 가치와 다치다는 다른 뜻으로도 쓰이므로 무조건 고치지 않는다.",
+    "ruleIds": [
+      "M6",
+      "M57"
+    ],
+    "sources": [
+      {
+        "title": "국립국어원 한글 맞춤법",
+        "url": "https://korean.go.kr/kornorms/regltn/regltnView.do?regltn_code=0001",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  },
+  {
+    "id": "C040",
+    "title": "직접 인용 구간 보존",
+    "keywords": [
+      "“",
+      "”",
+      "직접 인용",
+      "인용문",
+      "따옴표"
+    ],
+    "note": "큰따옴표는 직접 인용 구간을 표시할 수 있다. 원문 보존이 필요한 인용은 자동 변경을 피하고 확인용 제안으로 처리한다. 이는 검사기 설계상 주의다.",
+    "ruleIds": [],
+    "sources": [
+      {
+        "title": "한국어 어문 규범 문장 부호",
+        "url": "https://korean.go.kr/kornorms/m/m_regltn.do",
+        "checkedAt": "2026-11-24"
+      }
+    ],
+    "kind": "context"
+  }
+]

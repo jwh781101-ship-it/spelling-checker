@@ -1,13 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { tipsFor } from './data/tips';
-
-// 원문에서 틀린 표현 주변 문장 잘라 오기 (검증할 때 문맥으로 씀)
-function contextOf(original, wrong) {
-  const i = original.indexOf(wrong);
-  if (i < 0) return '';
-  return original.slice(Math.max(0, i - 40), i + wrong.length + 40);
-}
+import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
 
 async function fetchRules(refs) {
   try {
@@ -50,22 +44,31 @@ async function callVerify(stage, items) {
     body: JSON.stringify({ stage, items })
   });
   const data = await res.json();
-  if (data.error) throw new Error(data.error);
-  return data.items || [];
+  if (!res.ok || data.error || !Array.isArray(data.items)) throw new Error(data.error || 'verify-failed');
+  return data.items;
 }
 
 // 한 번에 너무 많이 보내면 서버가 10개까지만 보므로 6개씩 나눠 동시에 확인
+function missingVerification(item) {
+  return { id: item.id, found: false, source: 'none', verdict: '확인불가', officialRight: item.wrong, explain: '검증 응답을 받지 못해 원문을 유지합니다.', verificationFailed: true };
+}
+
 async function verifyInBatches(stage, items) {
   const batches = [];
   for (let i = 0; i < items.length; i += 6) batches.push(items.slice(i, i + 6));
-  const results = await Promise.all(batches.map(b => callVerify(stage, b).catch(() => [])));
-  const flat = results.flat();
-  if (!flat.length && items.length) throw new Error('verify-failed');
-  return flat;
+  const results = await Promise.all(batches.map(async batch => {
+    let response;
+    try { response = await callVerify(stage, batch); } catch { response = []; }
+    return batch.map(item => {
+      const matches = response.filter(v => v && String(v.id) === String(item.id));
+      return matches.length === 1 ? { ...matches[0], id: item.id } : missingVerification(item);
+    });
+  }));
+  return results.flat();
 }
 
 const VERDICT_TEXT = {
-  nikl: { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ AI 교정이 틀려서 국립국어원 기준으로 바꿨어요', '부분': '🔸 일부만 맞아서 국립국어원 기준으로 다듬었어요', '둘다가능': '🟰 둘 다 맞는 표현이에요 (원래 쓰신 대로 두었어요)' },
+  nikl: { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ AI 교정이 틀려서 자료 대조 결과가 AI 제안과 달라요', '부분': '🔸 일부만 맞아서 자료 대조 결과 일부만 같아요', '둘다가능': '🟰 둘 다 맞는 표현이에요 (원래 쓰신 대로 두었어요)' },
   web:  { '일치': '✅ AI 교정과 같아요', 'AI교정틀림': '⚠️ 웹 자료로는 AI 교정이 틀릴 수 있어요', '부분': '🔸 웹 자료로는 일부만 맞아요', '둘다가능': '🟰 웹 자료로는 둘 다 쓸 수 있어요' },
 };
 
@@ -78,15 +81,16 @@ function VerifyBox({ v, stage }) {
     return null;
   }
   if (v.source === 'none') {
-    return <div className="vbox vbox-none">❔ 국립국어원·웹 자료에서 근거를 찾지 못했어요. AI 판단만으로 고친 항목이에요.</div>;
+    return <div className="vbox vbox-none">{v.verificationFailed ? '⚠️ 검증 응답을 받지 못해 원문을 유지합니다.' : '❔ 국립국어원·웹 자료에서 근거를 찾지 못했어요. 원문을 유지하고 제안만 보여 드려요.'}</div>;
   }
   const isNikl = v.source === 'nikl';
   return (
     <div className={`vbox ${isNikl ? 'vbox-nikl' : 'vbox-web'}`}>
       <div className="vbox-head">
-        {isNikl ? '🏛️ 국립국어원 공식 자료' : '🔎 국립국어원 자료 없음 · AI 웹 검색 결과 (참고용)'}
+        {isNikl ? '🏛️ AI의 국립국어원 자료 대조 결과' : '🔎 국립국어원 자료 없음 · AI 웹 검색 결과 (참고용)'}
       </div>
       {VERDICT_TEXT[v.source]?.[v.verdict] && <div className="vbox-verdict">{VERDICT_TEXT[v.source][v.verdict]}</div>}
+      {v.verificationFailed && <div className="vbox-explain">공식 자료 대조 응답을 받지 못했어요. 웹 자료는 참고만 해 주세요.</div>}
       {v.explain && <div className="vbox-explain">{v.explain}</div>}
       {v.sources?.map((s, k) => (
         <a key={k} className="vbox-src" href={s.url} target="_blank" rel="noopener noreferrer">
@@ -98,9 +102,6 @@ function VerifyBox({ v, stage }) {
   );
 }
 
-function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function escRx(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); }
-
 // AI 답에서 JSON만 꺼내기 (앞뒤에 설명이나 코드블록 표시가 붙어도 괜찮게)
 function parseJSON(text) {
   const s = String(text || '');
@@ -110,14 +111,14 @@ function parseJSON(text) {
 }
 
 // 서버에 맞춤법 검사 / 사전 찾기 요청 (실패하면 한 번 더 시도)
-async function callAI(mode, text) {
+async function callAI(mode, text, contextBefore = '', contextAfter = '') {
   let lastErr;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const res = await fetch('/api/check', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, text })
+        body: JSON.stringify({ mode, text, contextBefore, contextAfter })
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status));
@@ -125,28 +126,6 @@ async function callAI(mode, text) {
     } catch (e) { lastErr = e; }
   }
   throw lastErr;
-}
-
-// 긴 글은 문단·문장 단위로 나눠서 검사 (한 번에 너무 길면 AI 답이 잘림)
-const CHUNK = 500;
-function splitText(t) {
-  const parts = [];
-  for (const seg of t.split(/(\n+)/)) {
-    if (seg.length <= CHUNK) { parts.push(seg); continue; }
-    const sentences = seg.match(/[^.!?。]+[.!?。]+[\s"'”’)]*|[^.!?。]+$/g) || [seg];
-    for (const s of sentences) {
-      if (s.length <= CHUNK) parts.push(s);
-      else for (let i = 0; i < s.length; i += CHUNK) parts.push(s.slice(i, i + CHUNK));
-    }
-  }
-  const chunks = [];
-  let cur = '';
-  for (const p of parts) {
-    if (cur && (cur + p).length > CHUNK) { chunks.push(cur); cur = ''; }
-    cur += p;
-  }
-  if (cur) chunks.push(cur);
-  return chunks;
 }
 
 function friendlyError(e) {
@@ -201,106 +180,93 @@ export default function Home() {
   }
 
   async function checkSpellingDirect(inputText) {
-    const t = (inputText || text).trim();
+    const t = inputText ?? text;
     setErrorMsg(null);
-    if (!t) { setErrorMsg({ text: '글을 먼저 입력해 주세요.' }); return; }
-    if (t.length < 2) { setErrorMsg({ text: '조금 더 길게 입력해 주세요.' }); return; }
+    if (!t.trim()) { setErrorMsg({ text: '글을 먼저 입력해 주세요.' }); return; }
+    if (t.trim().length < 2) { setErrorMsg({ text: '조금 더 길게 입력해 주세요.' }); return; }
+    const runId = ++verifyRunRef.current;
+    setVerify({}); setVerifyStage(''); setAiRules([]);
     setLoading(true); setResult(null); setDictResult(null);
     try {
-      const chunks = splitText(t);
+      const chunks = splitTextWithContext(t);
       let done = 0;
-      setProgress(chunks.length > 1 ? `글이 길어서 ${chunks.length}부분으로 나눠 살펴보고 있어요 (0/${chunks.length})` : '');
-      const parts = await Promise.all(chunks.map(async (c) => {
-        const lead = c.match(/^\s*/)[0], trail = c.match(/\s*$/)[0];
-        const body = c.trim();
-        if (body.length < 2) return { correctedText: c, errors: [] };
-        const r = await callAI('check', body);
+      setProgress(chunks.length > 1 ? '글을 나누어 살펴보고 있어요 (0/' + chunks.length + ')' : '');
+      const parts = await Promise.all(chunks.map(async c => {
+        if (!c.text.trim()) return { errors: [] };
+        const r = await callAI('check', c.text, c.contextBefore, c.contextAfter);
         done++;
-        if (chunks.length > 1) setProgress(`글이 길어서 ${chunks.length}부분으로 나눠 살펴보고 있어요 (${done}/${chunks.length})`);
-        return { ...r, correctedText: lead + String(r.correctedText || body).trim() + trail };
+        if (chunks.length > 1) setProgress('글을 나누어 살펴보고 있어요 (' + done + '/' + chunks.length + ')');
+        return r;
       }));
-      const seen = new Set();
-      const errors = [];
-      for (const p of parts) for (const e of (p.errors || [])) {
-        if (!e || !e.wrong || !e.right || e.wrong === e.right) continue;
-        const k = e.wrong + '→' + e.right;
-        if (seen.has(k)) continue;
-        seen.add(k); errors.push(e);
-      }
-      const comments = parts.map(p => p.overallComment).filter(Boolean);
-      // 나눠 검사하면 한쪽에서만 고친 낱말이 생길 수 있어서, 찾은 오류를 글 전체에 똑같이 반영
-      let merged = parts.map(p => p.correctedText).join('');
-      if (chunks.length > 1) {
-        for (const e of errors) {
-          if (e.wrong.length >= 2 && !e.right.includes(e.wrong)) merged = merged.split(e.wrong).join(e.right);
-        }
-      }
-      const parsed = {
-        hasErrors: errors.length > 0,
-        correctedText: merged,
-        errors,
-        overallComment: errors.length === 0 ? (comments[0] || '고칠 곳이 없는 바른 글입니다.') : (chunks.length > 1 ? `전체 글에서 ${errors.length}곳을 찾았어요.` : (comments[0] || '')),
-      };
+      if (verifyRunRef.current !== runId) return;
+      const candidates = parts.flatMap((p, i) => anchorEdits(chunks[i].text, p.errors || []).map(e => ({
+        ...e, start: e.start === null ? null : e.start + chunks[i].start,
+        end: e.end === null ? null : e.end + chunks[i].start,
+      })));
+      const errors = anchorEdits(t, candidates);
+      const parsed = { originalText: t, errors, hasErrors: errors.length > 0,
+        overallComment: errors.length ? 'AI가 제안한 항목을 살펴보고 있어요. 자료가 발견되어도 판단이 틀릴 수 있습니다.' : 'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.' };
       setResult(parsed);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-      setLoading(false); setProgress('');
-      runVerify(t, parsed); // 국립국어원 자료로 한 번 더 확인 (기다리지 않고 뒤에서 진행)
+      runVerify(t, parsed, runId);
     } catch(e) {
-      setErrorMsg({ text: friendlyError(e), retry: 'check' });
-    }
-    finally { setLoading(false); setProgress(''); }
+      if (verifyRunRef.current === runId) setErrorMsg({ text: friendlyError(e), retry: 'check' });
+    } finally { setLoading(false); setProgress(''); }
   }
 
-  // 1단계: 국립국어원 자료 검색 → 2단계: 못 찾은 것만 웹 검색
-  async function runVerify(original, parsed) {
+  async function runVerify(original, parsed, runId) {
     const errs = parsed?.errors || [];
-    const runId = Date.now();
-    verifyRunRef.current = runId;
-    setVerify({});
-    setAiRules([]);
     if (!errs.length) { setVerifyStage(''); return; }
-    // AI가 든 조항의 원문을 먼저 바로 보여 줌
     fetchRules(errs.map(e => e.rule || '')).then(r => { if (verifyRunRef.current === runId) setAiRules(r); });
-    const items = errs.map((e, i) => ({ id: i, wrong: e.wrong, right: e.right, rule: e.rule || '', context: contextOf(original, e.wrong) }));
+    const items = errs.map(e => ({ id: e.id, wrong: e.wrong, right: e.right, rule: e.rule || '', context: contextOf(original, e) }));
     const map = {};
     setVerifyStage('nikl');
     try {
       const r1 = await verifyInBatches('nikl', items);
       if (verifyRunRef.current !== runId) return;
       r1.forEach(v => { map[v.id] = v; });
-      applyOfficial(r1);
+      setResult(prev => {
+        if (!prev || prev.originalText !== original) return prev;
+        return { ...prev, errors: prev.errors.map(err => {
+          if (err.manual || err.status === 'needs_review') return err;
+          const v = map[err.id];
+          if (!v || v.source !== 'nikl' || v.found !== true) return { ...err, status: 'needs_review' };
+          if (v.verdict === '일치') return { ...err, status: 'applied' };
+          if (v.verdict === '둘다가능') return { ...err, status: 'kept' };
+          if ((v.verdict === 'AI교정틀림' || v.verdict === '부분') && typeof v.officialRight === 'string' && v.officialRight.trim() && !/[\/\n\r]/.test(v.officialRight) && !/\s또는\s/.test(v.officialRight)) {
+            if (v.officialRight === err.wrong) return { ...err, status: 'kept' };
+            return { ...err, aiRight: err.right, right: v.officialRight, status: 'applied' };
+          }
+          return { ...err, status: 'needs_review' };
+        }) };
+      });
       setVerify({ ...map });
-
       const rest = items.filter(it => !map[it.id] || map[it.id].source === 'none');
       if (rest.length) {
         setVerifyStage('web');
         try {
           const r2 = await verifyInBatches('web', rest);
           if (verifyRunRef.current !== runId) return;
-          r2.forEach(v => { map[v.id] = v; });
+          r2.forEach(v => { map[v.id] = { ...v, verificationFailed: !!(v.verificationFailed || map[v.id]?.verificationFailed) }; });
           setVerify({ ...map });
-        } catch (e) { /* 웹 검색 실패 시 '못 찾음'으로 둠 */ }
+        } catch (e) {
+          rest.forEach(it => { map[it.id] = missingVerification(it); });
+          setVerify({ ...map });
+        }
       }
       if (verifyRunRef.current === runId) setVerifyStage('done');
     } catch (e) {
-      if (verifyRunRef.current === runId) setVerifyStage('error');
+      if (verifyRunRef.current === runId) {
+        setResult(prev => prev && prev.originalText === original ? { ...prev, errors: prev.errors.map(err => err.manual ? err : { ...err, status: 'needs_review' }) } : prev);
+        items.forEach(it => { if (!map[it.id]) map[it.id] = missingVerification(it); });
+        setVerify({ ...map });
+        setVerifyStage('done');
+      }
     }
   }
 
-  // 국립국어원 자료가 AI 교정과 다르면 교정된 글을 국립국어원 기준으로 바꿈
-  function applyOfficial(list) {
-    setResult(prev => {
-      if (!prev) return prev;
-      let txt = prev.correctedText;
-      const errors = (prev.errors || []).map((err, i) => {
-        const v = list.find(x => x.id === i);
-        if (!v || v.source !== 'nikl' || !v.officialRight || v.officialRight === err.right) return err;
-        if (txt.includes(err.right)) txt = txt.replace(err.right, v.officialRight);
-        return { ...err, aiRight: err.right, aiReason: err.reason, reason: v.explain || err.reason, example: '', right: v.officialRight, keptOriginal: v.officialRight === err.wrong, bothOk: v.verdict === '둘다가능' };
-      });
-      const realCount = errors.filter(e => !e.keptOriginal).length;
-      return { ...prev, correctedText: txt, errors, hasErrors: realCount > 0 };
-    });
+  function chooseCorrection(id, manual) {
+    setResult(prev => prev && ({ ...prev, errors: prev.errors.map(e => e.id === id ? { ...e, manual } : e) }));
   }
 
   async function searchDictDirect(inputText) {
@@ -324,7 +290,7 @@ export default function Home() {
   async function searchDict() { await searchDictDirect(); }
 
   function clearAll() {
-    verifyRunRef.current = 0; setVerify({}); setVerifyStage(''); setAiRules([]);
+    verifyRunRef.current++; setVerify({}); setVerifyStage(''); setAiRules([]);
     setText(''); setResult(null); setDictResult(null); setErrorMsg(null);
   }
 
@@ -351,7 +317,7 @@ export default function Home() {
 
   function copyText() {
     if (!result) return;
-    navigator.clipboard.writeText(result.correctedText).then(() => {
+    navigator.clipboard.writeText(buildCorrection(result.originalText, result.errors).text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }).catch(() => setErrorMsg({ text: '복사가 안 됐어요. 교정된 글을 길게 눌러서 복사해 주세요.' }));
@@ -360,7 +326,7 @@ export default function Home() {
   // 휴대폰 공유창(카카오톡, 문자 등)으로 바로 보내기
   function shareText() {
     if (!result || !navigator.share) return;
-    navigator.share({ text: result.correctedText }).catch(() => {});
+    navigator.share({ text: buildCorrection(result.originalText, result.errors).text }).catch(() => {});
   }
 
   function isItemSaved(wrong, right) {
@@ -387,6 +353,8 @@ export default function Home() {
     setSaved([]);
     localStorage.removeItem('bareun_saved');
   }
+
+  const correction = result ? buildCorrection(result.originalText, result.errors) : null;
 
   return (
     <>
@@ -432,12 +400,12 @@ export default function Home() {
           <div className="btn-row">
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
-              onClick={() => { setMode('check'); setResult(null); setDictResult(null); verifyRunRef.current = 0; setVerify({}); setVerifyStage(''); checkSpellingDirect(); }}
+              onClick={() => { setMode('check'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); checkSpellingDirect(); }}
               disabled={loading}
             >✏️ 맞춤법</button>
             <button
               className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
-              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current = 0; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
+              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
               disabled={loading}
             >📖 사전</button>
           </div>
@@ -470,7 +438,7 @@ export default function Home() {
             <div className={`score-banner ${result.hasErrors ? 'has-errors' : 'perfect'}`}>
               <span className="score-emoji">{result.hasErrors ? '📌' : '🎉'}</span>
               <div className="score-text">
-                <h3>{result.hasErrors ? `${result.errors.filter(e => !e.keptOriginal).length}곳을 고쳐드렸어요` : '완벽합니다!'}</h3>
+                <h3>{result.hasErrors ? `AI 제안 ${result.errors.length}곳 · 적용 ${correction.appliedCount}곳` : 'AI 교정 제안이 없어요'}</h3>
                 <p>{result.overallComment}</p>
               </div>
             </div>
@@ -484,30 +452,18 @@ export default function Home() {
             )}
             {verifyStage === 'done' && (
               <div className="verify-status done">
-                ✔ 확인 끝: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 · 근거 못 찾음 {Object.values(verify).filter(v => v.source === 'none').length}개
+                AI의 공식 자료 대조 결과: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
               </div>
             )}
             <div className="corrected-sec">
               <div className="sec-label">교정된 글</div>
-              <div className="corrected-text" dangerouslySetInnerHTML={{
-                __html: (() => {
-                  let txt = esc(result.correctedText || '');
-                  (result.errors || []).forEach(e => {
-                    // correctedText에 right가 있으면 하이라이트
-                    const r = esc(e.right || '');
-                    if (r && !e.keptOriginal && txt.includes(r)) {
-                      txt = txt.replace(new RegExp(escRx(r), 'g'), `<mark>${r}</mark>`);
-                    }
-                  });
-                  return txt;
-                })()
-              }} />
+              <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
             </div>
             {result.errors?.length > 0 && (
               <div className="errors-sec">
                 <div className="sec-label" style={{marginBottom:'12px'}}>수정 내역</div>
                 {result.errors.map((err, i) => (
-                  <div key={i} className="error-item" style={{animationDelay: i*0.05+'s'}}>
+                  <div key={err.id} className="error-item" style={{animationDelay: i*0.05+'s'}}>
                     <div className="err-num">{i+1}</div>
                     <div className="err-body">
                       <div className="err-words">
@@ -516,21 +472,19 @@ export default function Home() {
                         <span className="word-right">{err.right}</span>
                         <span className="err-type">{err.type}</span>
                       </div>
-                      {err.aiRight && (
-                        <div className="err-override">
-                          {err.bothOk
-                            ? `국립국어원 자료에 따르면 '${err.wrong}', '${err.aiRight}' 둘 다 쓸 수 있어요. 원래 쓰신 대로 두었어요.`
-                            : err.keptOriginal
-                            ? `원래 쓰신 '${err.wrong}'이(가) 맞아요. (처음 AI는 '${err.aiRight}'(으)로 고쳤지만 국립국어원 기준과 달라 되돌렸어요)`
-                            : `처음 AI는 '${err.aiRight}'(으)로 고쳤지만 국립국어원 기준에 맞춰 '${err.right}'(으)로 바꿨어요.`}
-                        </div>
-                      )}
-                      {!err.aiRight && <div className="err-reason">{err.reason}</div>}
-                      {!err.aiRight && err.example && <div className="err-example">예) {err.example}</div>}
-                      {verify[i]
-                        ? (verify[i].source === 'nikl' && <RuleBox rule={verify[i].rule} quote={verify[i].ruleQuote} />)
+                      {err.aiRight && <div className="err-override">AI의 공식 자료 대조 결과 제안: {err.aiRight} → {err.right}. 자료 발견이 정답을 보장하지는 않습니다.</div>}
+                      <div className="err-reason">{err.explain || err.reason}</div>
+                      {err.example && <div className="err-example">예) {err.example}</div>}
+                      <p>{err.manual === 'apply' ? '직접 적용 선택' : err.manual === 'keep' ? '직접 원문 유지 선택' : err.status === 'applied' ? 'AI의 공식 자료 대조 결과를 적용했어요' : err.status === 'pending' ? '자료 대조 중 · 원문 유지' : err.status === 'kept' && verify[err.id]?.source === 'nikl' && verify[err.id]?.verdict === '둘다가능' ? '원문도 허용되어 유지' : err.status === 'kept' ? '원문 유지' : '근거 미확인 제안 · 원문 유지'}</p>
+                      {(err.start === null || err.overlap) && <p>위치가 모호하거나 다른 제안과 겹쳐 적용할 수 없어요.</p>}
+                      <div className="accuracy-choice">
+                        <button type="button" disabled={err.start === null || err.overlap} aria-pressed={err.manual === 'apply'} onClick={() => chooseCorrection(err.id, 'apply')}>이 교정 적용</button>
+                        <button type="button" aria-pressed={err.manual === 'keep'} onClick={() => chooseCorrection(err.id, 'keep')}>원문 유지</button>
+                      </div>
+                      {verify[err.id]
+                        ? (verify[err.id].source === 'nikl' && <RuleBox rule={verify[err.id].rule} quote={verify[err.id].ruleQuote} />)
                         : <RuleBox rule={aiRules[i]} pending={verifyStage === 'nikl' ? 'nikl' : 'ai'} />}
-                      <VerifyBox v={verify[i]} stage={verifyStage} />
+                      <VerifyBox v={verify[err.id]} stage={verifyStage} />
                     </div>
                     <button className="btn-star" onClick={() => toggleSave(err)}>
                       {isItemSaved(err.wrong, err.right) ? '⭐' : '☆'}
@@ -622,7 +576,7 @@ export default function Home() {
                     <span className="saved-right">{s.right}</span>
                     <span className="saved-type">{s.type}</span>
                   </div>
-                  <div className="saved-reason">{s.reason}</div>
+                  <div className="saved-reason">{s.explain || s.reason}</div>
                   <div className="saved-date">📅 {s.savedAt}</div>
                 </div>
                 <button className="btn-del-saved" onClick={() => deleteSaved(i)}>✕</button>
@@ -647,7 +601,7 @@ export default function Home() {
         </div>
       </main>
       <footer style={{ textAlign: 'center', padding: '20px' }}>
-        <a href="/privacy">개인정보처리방침</a>
+        <a href="/privacy">개인정보처리방침</a> · <a href="/sources">자료와 검증 방식</a>
       </footer>
 
     </>

@@ -4,6 +4,7 @@ export async function POST(request) {
     if (!word) return Response.json({ error: '단어를 입력해 주세요.' }, { status: 400 });
 
     const apiKey = process.env.KOREAN_DICT_API_KEY;
+    if (!apiKey) return Response.json({ items: [], configured: false, message: '공식 사전 API가 연결되지 않았습니다. 사전 링크에서 직접 확인해 주세요.' }, { status: 503 });
     const url = `https://stdict.korean.go.kr/api/search.do?key=${apiKey}&q=${encodeURIComponent(word)}&type_search=search&part=word&num=5&method=exact`;
 
     const res = await fetch(url);
@@ -30,7 +31,7 @@ export async function POST(request) {
       }
     }
 
-    return Response.json({ items, raw: text });
+    return Response.json({ items, configured: true });
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
   }

@@ -1,78 +1,39 @@
-// 국립국어원 한국어 어문 규범 원문 조회 (서버 전용)
+// 서버 전용: 공식 규범 본문·해설과 직접 정리한 용례를 문맥으로 검색합니다.
 import data from '../data/kornorms.json';
-
-const RULES = data.rules;
-const BY_ID = Object.fromEntries(RULES.map(r => [r.id, r]));
-
-// "한글 맞춤법 제42항", "맞춤법 42항", "표준어 규정 제17항" → 'M42' / 'S17'
+import cases from '../data/usageCases.json';
+import { makeKnowledgeIndex, retrieveKnowledge } from './knowledge.mjs';
+const BY_ID = Object.fromEntries(data.rules.map(r => [r.id, r]));
+const BY_CASE = Object.fromEntries(cases.map(c => [c.id, c]));
+const INDEX = makeKnowledgeIndex(data.rules, cases);
 export function refToId(ref) {
-  if (!ref) return null;
-  const s = String(ref);
+  const s = String(ref || '').trim();
   if (BY_ID[s]) return s;
-  const n = (s.match(/제?\s*(\d+)\s*항/) || [])[1];
+  const n = s.match(/제?\s*(\d+)\s*항/)?.[1];
   if (!n) return null;
-  if (/표준어/.test(s)) return BY_ID['S' + n] ? 'S' + n : null;
-  if (/맞춤법/.test(s) || !/규정/.test(s)) return BY_ID['M' + n] ? 'M' + n : null;
-  return null;
+  const prefix = /발음/.test(s) ? 'V' : /표준어/.test(s) ? 'S' : /맞춤법/.test(s) || /^제?\s*\d+\s*항$/.test(s) ? 'M' : '';
+  return BY_ID[prefix+n] ? prefix+n : null;
 }
-
-export function getRule(id) {
-  return BY_ID[id] || null;
-}
-
-// 화면에 보여 줄 짧은 형태
+export const getRule = id => BY_ID[id] || null;
+export const getCase = id => BY_CASE[id] || null;
 export function publicRule(r) {
   if (!r) return null;
   const lines = r.rule.split('\n');
-  return {
-    id: r.id,
-    title: `${r.law} ${r.article}`,
-    chapter: r.chapter,
-    statement: lines[0],
-    examples: lines.slice(1, 9).filter(l => l.length <= 40).slice(0, 6).join(' · '),
-    url: r.url,
-  };
+  return {id:r.id,title:`${r.law} ${r.article}`,chapter:r.chapter,statement:lines[0],examples:lines.slice(1,9).filter(l=>l.length<=40).slice(0,6).join(' · '),url:r.url};
 }
-
-// 하이픈·공백 무시 비교용
-const plain = s => String(s || '').replace(/[-\s·]/g, '');
-
-// 틀린 말/고친 말이 규정 본문(예시 목록)에 직접 나오는 조항 찾기
-export function findRulesByWords(words) {
-  const keys = words.map(plain).filter(w => w.length >= 2);
-  if (!keys.length) return [];
-  const hits = [];
-  for (const r of RULES) {
-    const lines = r.rule.split('\n');
-    const matched = lines.filter(l => keys.some(k => plain(l).includes(k)));
-    if (matched.length) hits.push({ rule: r, lines: matched.slice(0, 4) });
-  }
-  return hits.slice(0, 3);
-}
-
-// 검증 AI에게 넘길 규정 원문 묶음
-export function ruleContext(item) {
-  const blocks = [];
-  const seen = new Set();
-  const cited = getRule(refToId(item.rule));
-  if (cited) {
-    seen.add(cited.id);
-    blocks.push(`[${cited.id}] ${cited.law} ${cited.article} (${cited.chapter})\n조문:\n${cited.rule.slice(0, 1500)}\n해설:\n${cited.explain.slice(0, 2000)}`);
-  }
-  for (const h of findRulesByWords([item.wrong, item.right])) {
-    if (seen.has(h.rule.id)) continue;
-    seen.add(h.rule.id);
-    blocks.push(`[${h.rule.id}] ${h.rule.law} ${h.rule.article} (${h.rule.chapter})\n조문 첫 줄: ${h.rule.rule.split('\n')[0]}\n이 낱말이 나오는 줄:\n${h.lines.join('\n')}`);
-  }
-  return blocks;
-}
-
-// 인용문이 실제로 규정 원문에 있는지 확인
+const normalizedQuote = s => String(s || '').normalize('NFC').replace(/\s+/gu,' ').trim();
 export function quoteInRule(id, quote) {
-  const r = getRule(id);
-  if (!r || !quote) return false;
-  const q = plain(quote).replace(/[‘’'"“”.,]/g, '');
-  if (q.length < 4) return false;
-  const body = plain(r.rule + r.explain).replace(/[‘’'"“”.,]/g, '');
-  return body.includes(q);
+  const r = getRule(id), q = normalizedQuote(quote);
+  return !!r && !r.hasUntranscribedImages && !q.includes('[ㅘ+') && !q.includes('[ㅝ+') && !q.includes('[ㅙ+') && q.length >= 12 && q.length <= 450 && normalizedQuote(r.rule+'\n'+r.explain).includes(q);
+}
+export function quoteInCase(id, quote) {
+  const c = getCase(id), q = normalizedQuote(quote);
+  return !!c && q.length >= 12 && normalizedQuote(c.note).includes(q);
+}
+export const knowledgeForText = (text, options = {}) => retrieveKnowledge(INDEX,text,options);
+export function knowledgeForItem(item) {
+  return knowledgeForText(item.context || '',{words:[item.wrong,item.right],ruleIds:[refToId(item.rule)].filter(Boolean),maxRules:3,maxCases:2,maxChars:5500,maxDocChars:2100});
+}
+export const ruleContext = item => knowledgeForItem(item).blocks.map(b=>b.text);
+export function knowledgeSummary() {
+  return {version:'2026.11.24-1',source:data.source,fetchedAt:data.fetchedAt,rules:data.rules.length,counts:data.counts,cases:cases.length,sourceUrls:data.sourceUrls,attribution:data.attribution,copyrightPolicy:data.copyrightPolicy,imagePolicy:data.imagePolicy,untranscribedRules:data.rules.filter(r=>r.hasUntranscribedImages).length};
 }
