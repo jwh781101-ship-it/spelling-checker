@@ -33,8 +33,8 @@ export function applyVerifiedEdits(original,errors,map) {
     if(!valid)return{...err,status:'needs_review'};
     const v=map[err.id];
     if(!v||v.source!=='nikl'||v.found!==true)return{...err,status:'needs_review'};
-    if(v.verdict==='일치'&&v.officialRight===err.right)return{...err,status:'applied'};
-    if(v.verdict==='둘다가능')return{...err,status:'kept'};
+    if(v.verdict==='일치'&&v.officialRight===err.right)return{...err,explain:v.explain||err.explain,status:'applied'};
+    if(v.verdict==='둘다가능')return{...err,explain:v.explain||'원문도 허용되는 표기이므로 그대로 둡니다.',status:'kept'};
     if((v.verdict==='AI교정틀림'||v.verdict==='부분')&&typeof v.officialRight==='string'&&v.officialRight.trim()&&!/[\/\n\r]/.test(v.officialRight)&&!/\s또는\s/.test(v.officialRight)){
       if(v.officialRight===err.wrong)return{...err,status:'kept'};
       return{...err,aiRight:err.right,right:v.officialRight,status:'applied'};
