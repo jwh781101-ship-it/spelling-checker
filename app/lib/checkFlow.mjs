@@ -33,12 +33,11 @@ export function applyVerifiedEdits(original,errors,map) {
     if(!valid)return{...err,status:'needs_review'};
     const v=map[err.id];
     if(!v||v.source!=='nikl'||v.found!==true)return{...err,status:'needs_review'};
-    if(v.verdict==='일치'&&v.officialRight===err.right)return{...err,explain:v.explain||err.explain,status:'applied'};
+    if(v.verdict==='일치'&&v.officialRight===err.right&&v.evidence?.candidateMentioned===true)return{...err,explain:v.explain||err.explain,status:'applied'};
     if(v.verdict==='둘다가능')return{...err,explain:v.explain||'원문도 허용되는 표기이므로 그대로 둡니다.',status:'kept'};
-    if((v.verdict==='AI교정틀림'||v.verdict==='부분')&&typeof v.officialRight==='string'&&v.officialRight.trim()&&!/[\/\n\r]/.test(v.officialRight)&&!/\s또는\s/.test(v.officialRight)){
-      if(v.officialRight===err.wrong)return{...err,status:'kept'};
-      return{...err,aiRight:err.right,right:v.officialRight,status:'applied'};
-    }
+    // 자료 링크와 인용 일치는 AI가 문맥을 올바르게 해석했다는 증거가 아닙니다.
+    // 충돌·부분 판정의 대안은 참고만 하고 원문을 유지하여 직접 결정하게 합니다.
+    if(v.verdict==='AI교정틀림'||v.verdict==='부분')return{...err,status:'needs_review'};
     return{...err,status:'needs_review'};
   });
 }
