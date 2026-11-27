@@ -281,7 +281,7 @@ export default function Home() {
   function findCeremonyTerm(term) {
     if (loading || isRecording || typeof term !== 'string' || !term.trim()) return;
     const word = term.trim();
-    if (text && text !== word && !window.confirm('입력해 둔 글을 검색할 단어로 바꿉니다. 계속하시겠어요?')) return;
+    if (((text && text !== word) || result || dictResult) && !window.confirm('입력한 글이 검색어로 바뀌고 이전 검사·사전 결과가 사라집니다. 계속하시겠어요?')) return;
     setText(word);
     setMode('dict');
     setVerify({});
