@@ -313,7 +313,7 @@ export default function Home() {
     const q = expressionQuery.trim();
     expressionControllerRef.current?.abort();
     const run = ++expressionRunRef.current;
-    if (!q) { setExpressionResults(null); setExpressionStatus('찾을 표현을 입력해 주세요.'); return; }
+    if (!q) { setExpressionResults(null); setExpressionStatus(''); return; }
     const controller = new AbortController(); expressionControllerRef.current = controller;
     setExpressionResults(null); setExpressionStatus('자료를 찾고 있어요.');
     try {
@@ -533,17 +533,20 @@ export default function Home() {
         </div>
         {showExpressionSearch && <section id="expression-search" className="expression-search" aria-labelledby="expression-title">
           <h2 id="expression-title">자주 헷갈리는 표현</h2>
-          <p>검사할 글과 별도로 표현 자료를 검색합니다.</p>
+          <p>전체 {confusables.length}개 표현을 살펴보고, 궁금한 항목을 눌러 설명과 출처를 확인하세요.</p>
           <form onSubmit={searchExpressions}>
-            <label htmlFor="expression-query">찾을 표현</label>
-            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">자료 검색</button></div>
+            <label htmlFor="expression-query">표현 찾아보기 (선택)</label>
+            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">찾기</button></div>
           </form>
           {expressionStatus && <p role="status">{expressionStatus}</p>}
-          {expressionResults?.map((item, i) => <article className="expression-item" key={item.id ?? i}>
-            <h3>{item.correct}</h3>{item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
+          <p className="expression-count" aria-live="polite">{expressionResults === null ? '전체 표현' : '찾은 표현'} {(expressionResults ?? confusables).length}개</p>
+          {expressionResults !== null && <button type="button" className="expression-reset" onClick={() => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(''); setExpressionResults(null); setExpressionStatus(''); }}>전체 표현 다시 보기</button>}
+          {(expressionResults ?? confusables).map((item, i) => <details className="expression-item" key={item.id ?? i}>
+            <summary>{item.label || item.correct}</summary>
+            {item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
             <p>{item.explanation}</p>{item.example && <p>예) {item.example}</p>}
             {item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl) ? <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">출처: {item.sourceName || item.sourceUrl}</a> : item.sourceName && <p>출처: {item.sourceName}</p>}
-          </article>)}
+          </details>)}
         </section>}
         <div hidden={showTemplates || showExpressionSearch}>
         {/* 입력 카드 */}
