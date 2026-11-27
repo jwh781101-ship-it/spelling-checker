@@ -215,7 +215,9 @@ export default function Home() {
       controller.abort();
       if(verifyRunRef.current===runId && e?.name!=='AbortError') {
         const restored = restorePreviousResult();
-        setErrorMsg({text:friendlyError(e) + ' 검사가 끝나지 않아 나머지 요청을 중단했습니다.' + (restored ? ' 이전 검사 결과와 선택을 복원했습니다.' : ' 부분 결과는 표시하지 않습니다.'),retry:'check'});
+        setErrorMsg(restored
+          ? {text:friendlyError(e) + ' 검사가 끝나지 않아 나머지 요청을 중단하고 이전 검사 결과와 선택을 복원했습니다. 다시 시도하려면 아래 결과의 자료 검색까지 다시 검사 버튼을 눌러 주세요.'}
+          : {text:friendlyError(e) + ' 검사가 끝나지 않아 나머지 요청을 중단했습니다. 부분 결과는 표시하지 않습니다.',retry:'check'});
       }
     } finally {if(verifyRunRef.current===runId){setLoading(false);setProgress('');}}
   }
