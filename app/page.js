@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { tipsFor } from './data/tips';
 import { findQuickErrors } from './lib/quickCheck.mjs';
+import { confusables } from './data/confusables.mjs';
 import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
 import EasyReview from './components/EasyReview';
 import MessageTemplates from './components/MessageTemplates';
@@ -83,6 +84,19 @@ function friendlyError(e) {
   if (/Failed to fetch|NetworkError|Load failed/i.test(m)) return '인터넷 연결이 불안정해요. 와이파이나 데이터를 확인한 뒤 다시 눌러 주세요.';
   if (/overloaded|529|rate|429/i.test(m)) return '지금 사용하는 사람이 많아요. 잠시 뒤에 다시 눌러 주세요.';
   return '잠깐 문제가 생겼어요. 아래 버튼으로 다시 해 보세요.';
+}
+
+function findQuickSource(error) {
+  return confusables.find(item => item.correct === error.right &&
+    typeof item.wrong === 'string' && item.wrong.split('/').some(wrong => wrong.trim() === error.wrong) &&
+    typeof item.sourceName === 'string' && item.sourceName.startsWith('국립국어원') &&
+    typeof item.sourceUrl === 'string' && /^https:\/\/(?:www\.)?korean\.go\.kr\//i.test(item.sourceUrl));
+}
+
+function countDuplicateQuickErrors(localErrors, aiErrors) {
+  return localErrors.filter(local => aiErrors.some(ai =>
+    Number.isInteger(ai.start) && Number.isInteger(ai.end) && ai.start === local.start && ai.end === local.end && ai.wrong === local.wrong && ai.right === local.right
+  )).length;
 }
 
 export default function Home() {
@@ -208,7 +222,7 @@ export default function Home() {
       const errors = anchorEdits(t,candidates);
       const parsed = {originalText:t,errors,profile,hasErrors:errors.length>0,overallComment:errors.length?'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.':'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.'};
       setResult(parsed);
-      setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+      if (!findQuickErrors(t).length) setTimeout(() => { if (verifyRunRef.current === runId) resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}); },100);
       if(!errors.length)setElapsedMs(Date.now()-startedAt);
       runVerify(t,parsed,runId,{profile:apiProfile,signal:controller.signal,startedAt});
     } catch(e) {
@@ -441,7 +455,9 @@ export default function Home() {
   }
 
   const correction = result ? buildCorrection(result.originalText, result.errors) : null;
-  const quickErrors = quickActive ? findQuickErrors(text) : [];
+  const quickErrors = quickActive ? findQuickErrors(text).map(error => ({...error, source:findQuickSource(error)})) : [];
+  const currentQuickErrors = result?.originalText === text && mode === 'check' ? quickErrors : [];
+  const duplicateQuickCount = result ? countDuplicateQuickErrors(currentQuickErrors, result.errors) : 0;
 
   useEffect(() => {
     copySequenceRef.current++;
@@ -557,7 +573,7 @@ export default function Home() {
 
         {quickActive && mode === 'check' && <div className="result-card show quick-results" ref={resultRef} aria-live="polite">
           <div className="score-banner"><div className="score-text"><h3>먼저 찾은 표현 {quickErrors.length}곳</h3><p>일부 표현만 찾은 참고 결과입니다. 직접 확인하고 바꿀 수 있습니다.</p></div></div>
-          <div className="errors-sec">{quickErrors.length === 0 ? <p>먼저 찾은 표현은 없어요. AI 검사 결과도 확인해 주세요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div><div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
+          <div className="errors-sec">{quickErrors.length === 0 ? <p>먼저 찾은 표현은 없어요. AI 검사 결과도 확인해 주세요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div>{err.source && <p><a href={err.source.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.source.sourceName}</a></p>}<div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
         </div>}
 
         {/* 로딩 */}
@@ -590,6 +606,8 @@ export default function Home() {
               <div className="score-text">
                 <h3>{result.hasErrors ? `AI 제안 ${result.errors.length}곳 · 적용 ${correction.appliedCount}곳` : 'AI 교정 제안이 없어요'}</h3>
                 <p>{result.overallComment}</p>
+                {!result.hasErrors && currentQuickErrors.length > 0 && <p>먼저 찾은 표현 {currentQuickErrors.length}곳은 위에서 확인해 주세요.</p>}
+                {duplicateQuickCount > 0 && <p>먼저 찾은 표현 중 {duplicateQuickCount}곳은 아래 AI 제안과 같은 내용입니다.</p>}
               </div>
             </div>
             {['local','nikl','web'].includes(verifyStage) && (
