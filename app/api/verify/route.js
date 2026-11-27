@@ -66,7 +66,7 @@ export async function POST(request){
       const validId=id&&contexts[i].ruleIds.includes(id)&&!['M1','M2','M3','M4','S1','S2','V1'].includes(id);
       const rule=validId&&quoteInRule(id,r.ruleQuote)?publicRule(getRule(id)):null;
       const c=isNikl&&contexts[i].caseIds.includes(r.caseId)&&r.caseId!=='C040'&&quoteInCase(r.caseId,r.caseQuote)?getCase(r.caseId):null;
-      const localSources=c?(c.sources||[]).slice(0,2).map(s=>({title:'선별 용례 · '+s.title,url:s.url,quote:c.note+' (앱에서 정리한 요약)'})):[];
+      const localSources=c?(c.sources||[]).slice(0,2).map(s=>({title:'앱 정리 용례 · 참고: '+s.title,url:s.url,quote:c.note,kind:'app-summary'})):[];
       const contradictsCase=r.originalCorrect===true&&contexts[i].caseIds.some(id=>getCase(id)?.disallowedForms?.includes(it.wrong));
       const assessment=contradictsCase?{...r,found:false,originalCorrect:null,verdict:'확인불가',officialRight:it.wrong,explain:'허용 표기 판단이 제공된 용례와 달라 원문을 유지합니다.'}:r;
       const answer=normalizeVerification(it,assessment,{sources,rule,ruleQuote:rule?String(r.ruleQuote):'',localSources});
