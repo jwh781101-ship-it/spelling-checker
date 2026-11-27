@@ -64,7 +64,7 @@ function VerifyBox({ v, stage }) {
   return (
     <div className={`vbox ${isNikl ? 'vbox-nikl' : 'vbox-web'}`}>
       <div className="vbox-head">
-        {isNikl ? '🏛️ AI의 국립국어원 자료 대조 결과' : '🔎 국립국어원 자료 없음 · AI 웹 검색 결과 (참고용)'}
+        {isNikl ? '🏛️ AI의 국립국어원 자료 대조 결과' : '🔎 국립국어원 자료 미확인 · AI 웹 검색 결과 (참고용)'}
       </div>
       {VERDICT_TEXT[v.source]?.[v.verdict] && <div className="vbox-verdict">{VERDICT_TEXT[v.source][v.verdict]}</div>}
       {v.verificationFailed && <div className="vbox-explain">공식 자료 대조 응답을 받지 못했어요. 웹 자료는 참고만 해 주세요.</div>}
@@ -72,7 +72,7 @@ function VerifyBox({ v, stage }) {
       {v.sources?.map((s, k) => (
         <a key={k} className="vbox-src" href={s.url} target="_blank" rel="noopener noreferrer">
           📎 {s.title || s.url}
-          {s.quote && <span className="vbox-quote">“{s.quote}”</span>}
+          {s.quote && <span className="vbox-quote">{s.kind === 'app-summary' ? '앱에서 정리한 요약: ' + s.quote : '“' + s.quote + '”'}</span>}
         </a>
       ))}
     </div>
@@ -255,7 +255,8 @@ export default function Home() {
     const errs=parsed?.errors||[];
     if(!errs.length){retryBackupRef.current=null;setVerifyStage('done');return;}
     const localOnly=options.profile==='fast';
-    fetchRules(errs.map(e=>e.rule||''),options.signal).then(r=>{if(verifyRunRef.current===runId)setAiRules(r);});
+    const ruleRefs=errs.map(e=>e.rule||'');
+    if(ruleRefs.some(Boolean))fetchRules(ruleRefs,options.signal).then(r=>{if(verifyRunRef.current===runId)setAiRules(r);});
     const items=errs.map(e=>({id:e.id,wrong:e.wrong,right:e.right,rule:e.rule||'',context:contextOf(original,e)}));
     const map={}; setVerifyStage(localOnly?'local':'nikl');
     try {
@@ -264,7 +265,8 @@ export default function Home() {
       r1.forEach(v=>{map[v.id]=v;});
       setResult(prev=>verifyRunRef.current===runId&&prev?.originalText===original?{...prev,errors:applyVerifiedEdits(original,prev.errors,map)}:prev);
       setVerify({...map});
-      const rest=items.filter(it=>!map[it.id]||map[it.id].source==='none');
+      // 대조 오류는 자료를 찾지 못한 것이 아닙니다. 실패 항목을 웹으로 보내 비용을 낭비하지 않습니다.
+      const rest=items.filter(it=>map[it.id] && !map[it.id].verificationFailed && map[it.id].source==='none');
       if(!localOnly&&rest.length){
         setVerifyStage('web');
         const r2=await verifyInBatches('web',rest,{signal:options.signal});
@@ -558,7 +560,7 @@ export default function Home() {
               value={text}
               onChange={e => updateInput(e.target.value)}
               placeholder={mode === 'check'
-                ? "여기에 글을 입력하거나 붙여넣기 하세요.\n예) 오늘 날씨가 참 맑네요. 오랫만에 산책을 나갔습니다."
+                ? "여기에 글을 입력하거나 붙여넣기 하세요.\n예) 내일 뵈요. 오늘은 몇일인가요?"
                 : "찾고 싶은 단어를 입력하세요.\n예) 설레다, 어이없다, 금세"}
               maxLength={2000}
             />
@@ -578,12 +580,12 @@ export default function Home() {
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
               onClick={() => { setMode('check'); checkSpellingDirect(); }}
-              disabled={loading}
+              disabled={loading || ['local','nikl','web'].includes(verifyStage)}
             >맞춤법 검사</button>
             <button
               className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
               onClick={() => searchDictDirect()}
-              disabled={loading}
+              disabled={loading || ['local','nikl','web'].includes(verifyStage)}
             >사전 찾기</button>
           </div>
         </div>
@@ -668,7 +670,8 @@ export default function Home() {
                       <div className="err-reason">{err.explain || err.reason}</div>
                       {err.officialQuickSource && <p><a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.officialQuickSource.sourceName}</a> (별도 참고 자료)</p>}
                       {err.example && <div className="err-example">예) {err.example}</div>}
-                      <p>{err.manual === 'apply' ? '직접 적용 선택' : err.manual === 'keep' ? '직접 원문 유지 선택' : err.status === 'applied' ? 'AI의 공식 자료 대조 결과를 적용했어요' : err.status === 'pending' ? '자료 대조 중 · 원문 유지' : err.status === 'kept' && verify[err.id]?.source === 'nikl' && verify[err.id]?.verdict === '둘다가능' ? '원문도 허용되어 유지' : err.status === 'kept' ? '원문 유지' : '근거 미확인 제안 · 원문 유지'}</p>
+                      <p>{err.manual === 'apply' ? '직접 적용 선택' : err.manual === 'keep' ? '직접 원문 유지 선택' : err.status === 'applied' ? 'AI의 공식 자료 대조 결과를 적용했어요' : err.status === 'pending' ? '자료 대조 중 · 원문 유지' : err.status === 'kept' && verify[err.id]?.source === 'nikl' && verify[err.id]?.verdict === '둘다가능' ? '원문도 허용되어 유지' : err.status === 'kept' ? '원문 유지' : '자료 또는 적용 판단 확인 필요 · 원문 유지'}</p>
+                      {['부분','AI교정틀림'].includes(verify[err.id]?.verdict) && <p role="status">AI의 자료 대조 판단이 최초 제안과 다릅니다. 최초 제안: {err.right} · 대조 대안: {verify[err.id]?.officialRight || '확인 불가'}. 자동 적용하지 않았으니 자료와 문맥을 확인해 주세요.</p>}
                       {(err.start === null || err.overlap) && <p>위치가 모호하거나 다른 제안과 겹쳐 적용할 수 없어요.</p>}
                       <div className="accuracy-choice">
                         <button type="button" disabled={err.start === null || err.overlap} aria-pressed={err.manual === 'apply'} onClick={() => chooseCorrection(err.id, 'apply')}>이 교정 적용</button>
@@ -711,6 +714,7 @@ export default function Home() {
               </div>
             </div>
             <div className="errors-sec">
+              <p role="note">{dictResult.sourceType === 'local' ? '앱에 저장된 부고 용어 설명입니다.' : 'AI가 작성한 뜻풀이이며 공식 사전을 실시간 조회한 결과가 아닙니다. 아래 사전 링크에서 확인해 주세요.'}</p>
               {dictResult.meanings?.map((m, i) => (
                 <div key={i} className="error-item" style={{animationDelay: i*0.05+'s'}}>
                   <div className="err-num">{i+1}</div>
