@@ -8,14 +8,15 @@ function harness(initial, previous = null) {
   const check = section('  async function checkSpellingDirect(', '  async function runVerify(');
   const input = section('  function updateInput(', '  async function checkSpelling()');
   const make = new Function('initial', 'previous', `
-    let text=initial; let state={}; const verifyRunRef={current:0}, requestControllerRef={current:null}, resultRef={current:null}, retryBackupRef={current:null};
+    let text=initial; let state={}; const verifyRunRef={current:0}, requestControllerRef={current:null}, resultRef={current:{scrollIntoView:()=>state.scrolled=true}}, retryBackupRef={current:null};
     const result=previous, verify={a:{source:'nikl'}}, verifyStage='done', aiRules=['rule'], elapsedMs=42;
     let resolveAI, rejectAI; const pending=new Promise((r,j)=>{resolveAI=r;rejectAI=j});
     const callAI=(...args)=>{state.call=args; return pending};
     const splitTextWithContext=t=>[{text:t,start:0}];
     const anchorEdits=(t,e)=>e;
+    const findQuickErrors=t=>t.includes('몇일') ? [{wrong:'몇일',right:'며칠',start:t.indexOf('몇일'),end:t.indexOf('몇일')+2}] : [];
     const runVerify=(t,p,id,o)=>{state.verification=o};
-    const setTimeout=()=>{};
+    const setTimeout=fn=>{(state.timers ||= []).push(fn)};
     const setErrorMsg=v=>state.error=v, setQuickActive=v=>state.quick=v, setElapsedMs=v=>state.elapsed=v,
       setVerify=v=>state.verify=v, setVerifyStage=v=>state.stage=v, setAiRules=v=>state.rules=v,
       setLoading=v=>state.loading=v, setResult=v=>state.result=v, setDictResult=v=>state.dict=v,
@@ -24,7 +25,7 @@ function harness(initial, previous = null) {
     __HELPERS__
     __CHECK__
     __INPUT__
-    return {state, checkSpellingDirect, applyQuick, cancelInspection, resolveAI, rejectAI, verifyRunRef};
+    return {state, checkSpellingDirect, applyQuick, updateInput, cancelInspection, resolveAI, rejectAI, verifyRunRef};
   `.replace('__HELPERS__', helpers).replace('__CHECK__', check).replace('__INPUT__', input));
   return make(initial, previous);
 }
@@ -171,4 +172,43 @@ test('자료 검색 재검사 실패 후 복원할 때 기본 검사 재시도 �
 test('일반 검사 실패 시에는 기존 다시 해 보기 버튼을 유지한다', async () => {
   const h=harness('검사할 글'), done=h.checkSpellingDirect(); h.rejectAI(new Error('network')); await done;
   assert.equal(h.state.error.retry,'check'); assert.match(h.state.error.text,/부분 결과는 표시하지/);
+});
+
+test('AI 제안이 없어도 먼저 찾은 날짜 표현이 있으면 AI 결과로 이동하지 않고 안내한다', async () => {
+  const h=harness('오늘은 몇일인가요?'), done=h.checkSpellingDirect();
+  h.resolveAI({errors:[]}); await done;
+  assert.equal(h.state.result.hasErrors,false); assert.equal(h.state.timers,undefined);
+  assert.match(page,/!result\.hasErrors && currentQuickErrors\.length > 0/);
+  assert.match(page,/먼저 찾은 표현 \{currentQuickErrors\.length\}곳은 위에서 확인해 주세요/);
+});
+
+test('로컬 후보가 없으면 결과로 이동하지만 원문 변경 후 예약된 이동은 무효화한다', async () => {
+  const h=harness('안녕하세요'), done=h.checkSpellingDirect(); h.resolveAI({errors:[]}); await done;
+  assert.equal(h.state.timers.length,1); h.updateInput('글이 바뀌었어요'); h.state.timers[0]();
+  assert.equal(h.state.scrolled,undefined); assert.equal(h.state.result,null);
+  const h2=harness('안녕하세요'), done2=h2.checkSpellingDirect(); h2.resolveAI({errors:[]}); await done2;
+  h2.state.timers[0](); assert.equal(h2.state.scrolled,true);
+});
+
+test('같은 위치와 같은 원문·제안인 경우만 중복으로 세고 각 로컬 후보는 한 번만 센다', () => {
+  const source=section('function countDuplicateQuickErrors(', 'export default function Home()');
+  const count=new Function(source+';return countDuplicateQuickErrors')();
+  const local=[{start:4,end:6,wrong:'몇일',right:'며칠'},{start:9,end:11,wrong:'몇일',right:'며칠'}];
+  assert.equal(count(local,[{...local[0]},{...local[0]},{...local[1],right:'다른 표현'}]),1);
+  assert.equal(count(local,[{...local[0],start:null,end:null}]),0);
+  assert.match(page,/먼저 찾은 표현 중 \{duplicateQuickCount\}곳은 아래 AI 제안과 같은 내용입니다/);
+});
+
+test('다섯 규칙은 정확히 일치하는 국립국어원 자료만 표시하며 알 수 없는 후보는 제외한다', () => {
+  const raw=readFileSync(new URL('../app/data/confusables.mjs',import.meta.url),'utf8');
+  const data=new Function(raw.replace('export const confusables', 'const confusables')+';return confusables')();
+  const source=section('function findQuickSource(', 'function countDuplicateQuickErrors(');
+  const lookup=new Function('confusables',source+';return findQuickSource')(data);
+  for (const [wrong,right,id] of [['몇일','며칠','myeochil'],['오랫만','오랜만','oraenman'],['설겆이','설거지','seolgeoji'],['역활','역할','yeokhal'],['뵈요','봬요','bwaeyo']]) {
+    const match=lookup({wrong,right}); assert.equal(match?.id,id); assert.match(match.sourceUrl,/^https:\/\/(?:www\.)?korean\.go\.kr\//);
+  }
+  assert.equal(lookup({wrong:'몇일',right:'오랜만'}),undefined);
+  const unsafe=new Function('confusables',source+';return findQuickSource')([{wrong:'몇일',correct:'며칠',sourceName:'국립국어원',sourceUrl:'https://korean.go.kr.example.com/path'}]);
+  assert.equal(unsafe({wrong:'몇일',right:'며칠'}),undefined);
+  assert.match(page,/href=\{err\.source\.sourceUrl\} target="_blank" rel="noopener noreferrer"/);
 });
