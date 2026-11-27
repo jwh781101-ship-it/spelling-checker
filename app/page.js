@@ -91,6 +91,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(null);
   const requestControllerRef = useRef(null);
+  const retryBackupRef = useRef(null);
   const [result, setResult] = useState(null);
   const [quickActive, setQuickActive] = useState(false);
   const [showExpressionSearch, setShowExpressionSearch] = useState(false);
@@ -155,12 +156,28 @@ export default function Home() {
     setTips(tipsFor(next));
   }
 
+  function restorePreviousResult() {
+    const backup = retryBackupRef.current;
+    if (!backup) return false;
+    retryBackupRef.current = null;
+    verifyRunRef.current++; requestControllerRef.current?.abort();
+    setLoading(false); setProgress('');
+    setResult(backup.result); setVerify(backup.verify); setVerifyStage(backup.verifyStage);
+    setAiRules(backup.aiRules); setElapsedMs(backup.elapsedMs);
+    return true;
+  }
+
   function cancelInspection() {
     verifyRunRef.current++;
     requestControllerRef.current?.abort();
-    setLoading(false); setProgress(''); setVerifyStage('cancelled');
+    setLoading(false); setProgress('');
+    if (restorePreviousResult()) {
+      setErrorMsg({text:'다시 검사를 취소해 이전 검사 결과와 선택을 복원했습니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
+      return;
+    }
+    setVerifyStage('cancelled');
     if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='full');return map;});
-    setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
+    setErrorMsg({text:'검사를 취소했습니다. 화면에 표시된 결과만 유지하며, 진행 중이던 자료 대조는 끝나지 않았습니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
     setResult(prev => prev ? {...prev, errors:prev.errors.map(e => e.status === 'pending' ? {...e,status:'needs_review'} : e)} : prev);
   }
 
@@ -168,6 +185,7 @@ export default function Home() {
     const t = inputText ?? text;
     setErrorMsg(null);
     if (!t.trim()) { setErrorMsg({text:'글을 먼저 입력해 주세요.'}); return; }
+    retryBackupRef.current = profile === 'thorough' && result ? {result, verify, verifyStage, aiRules, elapsedMs} : null;
     setQuickActive(true);
     requestControllerRef.current?.abort();
     const controller = new AbortController(); requestControllerRef.current = controller;
@@ -194,13 +212,17 @@ export default function Home() {
       if(!errors.length)setElapsedMs(Date.now()-startedAt);
       runVerify(t,parsed,runId,{profile:apiProfile,signal:controller.signal,startedAt});
     } catch(e) {
-      if(verifyRunRef.current===runId && e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'check'});
+      controller.abort();
+      if(verifyRunRef.current===runId && e?.name!=='AbortError') {
+        const restored = restorePreviousResult();
+        setErrorMsg({text:friendlyError(e) + ' 검사가 끝나지 않아 나머지 요청을 중단했습니다.' + (restored ? ' 이전 검사 결과와 선택을 복원했습니다.' : ' 부분 결과는 표시하지 않습니다.'),retry:'check'});
+      }
     } finally {if(verifyRunRef.current===runId){setLoading(false);setProgress('');}}
   }
 
   async function runVerify(original,parsed,runId,options) {
     const errs=parsed?.errors||[];
-    if(!errs.length){setVerifyStage('done');return;}
+    if(!errs.length){retryBackupRef.current=null;setVerifyStage('done');return;}
     const localOnly=options.profile==='fast';
     fetchRules(errs.map(e=>e.rule||''),options.signal).then(r=>{if(verifyRunRef.current===runId)setAiRules(r);});
     const items=errs.map(e=>({id:e.id,wrong:e.wrong,right:e.right,rule:e.rule||'',context:contextOf(original,e)}));
@@ -219,9 +241,16 @@ export default function Home() {
         r2.forEach(v=>{map[v.id]={...v,verificationFailed:!!(v.verificationFailed||map[v.id]?.verificationFailed)};});
         setVerify({...map});
       }
-      if(verifyRunRef.current===runId){setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);}
+      if(verifyRunRef.current===runId){
+        if (Object.values(map).some(v=>v.verificationFailed) && restorePreviousResult()) {
+          setErrorMsg({text:'자료 대조가 끝나지 않아 이전 검사 결과와 선택을 복원했습니다. 다시 시도해 주세요.'});
+          return;
+        }
+        retryBackupRef.current=null; setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);
+      }
     } catch(e) {
       if(verifyRunRef.current===runId&&e?.name!=='AbortError'){
+        if (restorePreviousResult()) { setErrorMsg({text:'자료 대조가 끝나지 않아 이전 검사 결과와 선택을 복원했습니다. 다시 시도해 주세요.'}); return; }
         items.forEach(it=>{if(!map[it.id])map[it.id]=missingVerification(it,localOnly);});
         setResult(prev=>prev?.originalText===original?{...prev,errors:applyVerifiedEdits(original,prev.errors,map)}:prev);
         setVerify({...map});setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);
@@ -238,8 +267,8 @@ export default function Home() {
     const t=(inputText||text).trim();setErrorMsg(null);
     if(!t){setErrorMsg({text:'찾을 단어를 먼저 입력해 주세요.'});return;}
     if(t.length>30){setErrorMsg({text:'사전은 단어 하나만 찾을 수 있어요. 단어만 남기고 다시 눌러 주세요.'});return;}
-    requestControllerRef.current?.abort();const controller=new AbortController();requestControllerRef.current=controller;
-    const runId=++verifyRunRef.current;setVerifyStage('');setElapsedMs(null);
+    retryBackupRef.current=null; requestControllerRef.current?.abort();const controller=new AbortController();requestControllerRef.current=controller;
+    const runId=++verifyRunRef.current;setMode('dict');setVerify({});setAiRules([]);setVerifyStage('');setElapsedMs(null);
     setLoading(true);setResult(null);setDictResult(null);setQuickActive(false);
     try{const parsed=await callAI('dict',t,'','',{signal:controller.signal});if(verifyRunRef.current!==runId)return;parsed.searchWord=t;setDictResult(parsed);setTimeout(()=>resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);}
     catch(e){if(verifyRunRef.current===runId&&e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'dict'});}
@@ -265,6 +294,7 @@ export default function Home() {
   }
 
   function updateInput(value) {
+    retryBackupRef.current=null;
     requestControllerRef.current?.abort(); verifyRunRef.current++;
     setLoading(false); setProgress(''); setVerifyStage(''); setResult(null); setDictResult(null); setErrorMsg(null);
     setText(value);
@@ -280,6 +310,7 @@ export default function Home() {
   async function searchDict() { await searchDictDirect(); }
 
   function clearAll() {
+    retryBackupRef.current=null;
     requestControllerRef.current?.abort(); setLoading(false); setProgress(''); setElapsedMs(null);
     verifyRunRef.current++; setVerify({}); setVerifyStage(''); setAiRules([]);
     setText(''); setResult(null); setDictResult(null); setQuickActive(false); setErrorMsg(null);
@@ -307,7 +338,7 @@ export default function Home() {
   function applyTemplate(body, method = 'replace') {
     const next = insertTemplate(text, body, method);
     if (!next.ok) { setTemplateNotice(next.error); return; }
-    requestControllerRef.current?.abort();setLoading(false);setElapsedMs(null);
+    retryBackupRef.current=null; requestControllerRef.current?.abort();setLoading(false);setElapsedMs(null);
     verifyRunRef.current++;
     recognitionRef.current?.abort?.();
     setIsRecording(false);
@@ -439,9 +470,14 @@ export default function Home() {
       <main>
         <nav className="app-feature-switch" aria-label="기능 선택">
           <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates && !showExpressionSearch} onClick={closeTemplates}>글 검사</button>
-          <button type="button" aria-pressed={showTemplates} disabled={loading || isRecording} onClick={() => { setShowExpressionSearch(false); setShowTemplates(true); }}>경조사 문구</button>
+          <button type="button" aria-pressed={showTemplates} disabled={isRecording} onClick={() => { setShowExpressionSearch(false); setShowTemplates(true); }}>경조사 문구</button>
           <button type="button" aria-pressed={showExpressionSearch} onClick={() => { setShowTemplates(false); setPendingTemplate(null); setShowExpressionSearch(true); }}>자주 헷갈리는 표현</button>
         </nav>
+        {(showTemplates || showExpressionSearch) && (loading || ['local','nikl','web'].includes(verifyStage)) && <div className="notice-card" role="status">
+          <p>{loading ? 'AI 검사 또는 사전 찾기가 진행 중입니다.' : '검사 결과를 자료와 대조 중입니다.'} 완료까지 시간이 걸릴 수 있습니다.</p>
+          <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
+        </div>}
+        {(showTemplates || showExpressionSearch) && !loading && errorMsg && <div className="notice-card" role="alert"><p>{errorMsg.text}</p><button type="button" className="check-cancel" onClick={closeTemplates}>글 검사로 돌아가기</button></div>}
         <div hidden={!showTemplates} className="phrase-panel">
           <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
           {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
@@ -504,12 +540,12 @@ export default function Home() {
           <div className="btn-row">
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
-              onClick={() => { setMode('check'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); checkSpellingDirect(); }}
+              onClick={() => { setMode('check'); checkSpellingDirect(); }}
               disabled={loading}
             >맞춤법 검사</button>
             <button
               className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
-              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
+              onClick={() => searchDictDirect()}
               disabled={loading}
             >사전 찾기</button>
           </div>
