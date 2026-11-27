@@ -159,3 +159,16 @@ test('웹 자료 대조 실패 시 새 결과 대신 이전 선택과 대조 결
   assert.equal(h.state.result,h.previous); assert.equal(h.state.result.errors[0].manual,'keep');
   assert.deepEqual(h.state.verify,{old:{source:'nikl'}}); assert.equal(h.state.stage,'done'); assert.match(h.state.error.text,/복원/);
 });
+
+test('자료 검색 재검사 실패 후 복원할 때 기본 검사 재시도 버튼을 노출하지 않는다', async () => {
+  const previous={originalText:'몇일',errors:[{id:'a',manual:'keep'}],profile:'full'};
+  const h=harness('몇일',previous), done=h.checkSpellingDirect(undefined,'thorough');
+  h.rejectAI(new Error('network')); await done;
+  assert.equal(h.state.result,previous); assert.equal(h.state.error.retry,undefined);
+  assert.match(h.state.error.text,/자료 검색까지 다시 검사 버튼/);
+});
+
+test('일반 검사 실패 시에는 기존 다시 해 보기 버튼을 유지한다', async () => {
+  const h=harness('검사할 글'), done=h.checkSpellingDirect(); h.rejectAI(new Error('network')); await done;
+  assert.equal(h.state.error.retry,'check'); assert.match(h.state.error.text,/부분 결과는 표시하지/);
+});
