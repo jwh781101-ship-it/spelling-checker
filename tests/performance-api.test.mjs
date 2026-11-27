@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {getFuneralDictionaryEntry} from '../app/data/funeralTerms.mjs';
 import {fileURLToPath} from 'node:url';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const read=p=>fs.readFileSync(root+'/'+p,'utf8');
@@ -10,7 +11,7 @@ const rules=JSON.parse(read('app/data/kornorms.json')),cases=JSON.parse(read('ap
 const strip=s=>s.replace(/^import\s[\s\S]*?;\s*/gm,'').replace(/\bexport\s+/g,'');
 const names=['refToId','getRule','getCase','publicRule','quoteInRule','quoteInCase','knowledgeForText','knowledgeForItem','ruleContext','knowledgeSummary'];
 const norms=new Function('data','cases','makeKnowledgeIndex','retrieveKnowledge',strip(read('app/lib/kornorms.js'))+';return {'+names.join(',')+'}')(rules,cases,knowledge.makeKnowledgeIndex,knowledge.retrieveKnowledge);
-const deps={...knowledge,...corrections,...prompts,...norms,isForeignOrigin:()=>false,allowRequest:()=>true};
+const deps={getFuneralDictionaryEntry,...knowledge,...corrections,...prompts,...norms,isForeignOrigin:()=>false,allowRequest:()=>true};
 const route=p=>new Function(...Object.keys(deps),strip(read(p))+';return POST')(...Object.values(deps));
 const check=route('app/api/check/route.js'),verify=route('app/api/verify/route.js');
 process.env.ANTHROPIC_API_KEY='test-placeholder';

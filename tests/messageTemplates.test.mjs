@@ -16,8 +16,9 @@ test('문구는 실존하는 범주에 속한다', () => {
 test('각 범주에 최소 세 문구가 있다', () => {
   for (const category of categories) assert.ok(filterTemplates(category.id).length >= 3, category.id);
 });
-test('문구 수가 24개 이상 32개 이하다', () => {
-  assert.ok(templates.length >= 24 && templates.length <= 32);
+test('기존 짧은 문구를 보존하고 정성 문구를 제공한다', () => {
+  assert.equal(templates.filter((item) => item.length == null).length, 24);
+  assert.ok(templates.filter((item) => item.length === 'long').length >= 20);
 });
 test('범주명과 문구의 라벨과 본문이 비어 있지 않다', () => {
   for (const category of categories) assert.ok(category.label.trim());
