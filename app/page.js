@@ -68,7 +68,7 @@ function VerifyBox({ v, stage }) {
       </div>
       {VERDICT_TEXT[v.source]?.[v.verdict] && <div className="vbox-verdict">{VERDICT_TEXT[v.source][v.verdict]}</div>}
       {v.verificationFailed && <div className="vbox-explain">공식 자료 대조 응답을 받지 못했어요. 웹 자료는 참고만 해 주세요.</div>}
-      {v.explain && <div className="vbox-explain">{v.explain}</div>}
+      {v.explain && <div className="vbox-explain"><strong>AI 대조 설명 (판단이 틀릴 수 있음): </strong>{v.explain}</div>}
       {v.sources?.map((s, k) => (
         <a key={k} className="vbox-src" href={s.url} target="_blank" rel="noopener noreferrer">
           📎 {s.title || s.url}
@@ -107,6 +107,11 @@ function safeDisplayErrors(original, errors) {
     const source = local && findQuickSource(local);
     return source ? {...error, explain:local.reason, reason:local.reason, officialQuickSource:source} : error;
   });
+}
+
+function verificationForDisplay(verification, hasOfficialQuickSource) {
+  if (!hasOfficialQuickSource || !verification || ['둘다가능', 'AI교정틀림', '부분'].includes(verification.verdict)) return verification;
+  return {...verification, explain:undefined};
 }
 
 export default function Home() {
@@ -477,7 +482,7 @@ export default function Home() {
 
   function renderEvidence(err, i) {
     const verification = verify[err.id];
-    const shownVerification = err.officialQuickSource && verification ? {...verification, explain:undefined} : verification;
+    const shownVerification = verificationForDisplay(verification, !!err.officialQuickSource);
     return <>
       {err.officialQuickSource && <p>참고 자료: <a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">{err.officialQuickSource.sourceName}</a>. 이 링크는 별도 자료이며 AI 대조 완료를 뜻하지 않습니다.</p>}
       {verify[err.id]
