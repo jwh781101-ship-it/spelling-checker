@@ -99,6 +99,16 @@ function countDuplicateQuickErrors(localErrors, aiErrors) {
   )).length;
 }
 
+function safeDisplayErrors(original, errors) {
+  const localErrors = findQuickErrors(original);
+  return errors.map(error => {
+    const local = localErrors.find(item => Number.isInteger(error.start) && Number.isInteger(error.end) &&
+      item.start === error.start && item.end === error.end && item.wrong === error.wrong && item.right === error.right);
+    const source = local && findQuickSource(local);
+    return source ? {...error, explain:local.reason, reason:local.reason, officialQuickSource:source} : error;
+  });
+}
+
 export default function Home() {
   const [text, setText] = useState('');
   const [mode, setMode] = useState('check'); // 'check' | 'dict'
@@ -455,6 +465,7 @@ export default function Home() {
   }
 
   const correction = result ? buildCorrection(result.originalText, result.errors) : null;
+  const displayErrors = result ? safeDisplayErrors(result.originalText, result.errors) : [];
   const quickErrors = quickActive ? findQuickErrors(text).map(error => ({...error, source:findQuickSource(error)})) : [];
   const currentQuickErrors = result?.originalText === text && mode === 'check' ? quickErrors : [];
   const duplicateQuickCount = result ? countDuplicateQuickErrors(currentQuickErrors, result.errors) : 0;
@@ -465,11 +476,14 @@ export default function Home() {
   }, [correction?.text]);
 
   function renderEvidence(err, i) {
+    const verification = verify[err.id];
+    const shownVerification = err.officialQuickSource && verification ? {...verification, explain:undefined} : verification;
     return <>
+      {err.officialQuickSource && <p>참고 자료: <a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">{err.officialQuickSource.sourceName}</a>. 이 링크는 별도 자료이며 AI 대조 완료를 뜻하지 않습니다.</p>}
       {verify[err.id]
         ? (verify[err.id].source === 'nikl' && <RuleBox rule={verify[err.id].rule} quote={verify[err.id].ruleQuote} />)
         : <RuleBox rule={aiRules[i]} pending={verifyStage === 'nikl' ? 'nikl' : 'ai'} />}
-      <VerifyBox v={verify[err.id]} stage={verifyStage} />
+      <VerifyBox v={shownVerification} stage={verifyStage} />
     </>;
   }
 
@@ -635,7 +649,7 @@ export default function Home() {
                   <button type="button" aria-pressed={reviewMode === 'all'} onClick={() => setReviewMode('all')}>전체 목록</button>
                   <button type="button" aria-pressed={reviewMode === 'simple'} onClick={() => setReviewMode('simple')}>하나씩 크게 확인</button>
                 </div>
-                {reviewMode === 'simple' ? <EasyReview original={result.originalText} errors={result.errors} verify={verify} verifyStage={verifyStage} onChoose={chooseCorrection} renderDetails={renderEvidence} /> : result.errors.map((err, i) => (
+                {reviewMode === 'simple' ? <EasyReview original={result.originalText} errors={displayErrors} verify={verify} verifyStage={verifyStage} onChoose={chooseCorrection} renderDetails={renderEvidence} /> : displayErrors.map((err, i) => (
                   <div key={err.id} className="error-item" style={{animationDelay: i*0.05+'s'}}>
                     <div className="err-num">{i+1}</div>
                     <div className="err-body">
@@ -647,6 +661,7 @@ export default function Home() {
                       </div>
                       {err.aiRight && <div className="err-override">AI의 공식 자료 대조 결과 제안: {err.aiRight} → {err.right}. 자료 발견이 정답을 보장하지는 않습니다.</div>}
                       <div className="err-reason">{err.explain || err.reason}</div>
+                      {err.officialQuickSource && <p><a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.officialQuickSource.sourceName}</a> (별도 참고 자료)</p>}
                       {err.example && <div className="err-example">예) {err.example}</div>}
                       <p>{err.manual === 'apply' ? '직접 적용 선택' : err.manual === 'keep' ? '직접 원문 유지 선택' : err.status === 'applied' ? 'AI의 공식 자료 대조 결과를 적용했어요' : err.status === 'pending' ? '자료 대조 중 · 원문 유지' : err.status === 'kept' && verify[err.id]?.source === 'nikl' && verify[err.id]?.verdict === '둘다가능' ? '원문도 허용되어 유지' : err.status === 'kept' ? '원문 유지' : '근거 미확인 제안 · 원문 유지'}</p>
                       {(err.start === null || err.overlap) && <p>위치가 모호하거나 다른 제안과 겹쳐 적용할 수 없어요.</p>}
