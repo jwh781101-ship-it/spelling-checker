@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { tipsFor } from './data/tips';
 import { findQuickErrors } from './lib/quickCheck.mjs';
+import { confusables } from './data/confusables.mjs';
 import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
 import EasyReview from './components/EasyReview';
 import MessageTemplates from './components/MessageTemplates';
@@ -67,7 +68,7 @@ function VerifyBox({ v, stage }) {
       </div>
       {VERDICT_TEXT[v.source]?.[v.verdict] && <div className="vbox-verdict">{VERDICT_TEXT[v.source][v.verdict]}</div>}
       {v.verificationFailed && <div className="vbox-explain">공식 자료 대조 응답을 받지 못했어요. 웹 자료는 참고만 해 주세요.</div>}
-      {v.explain && <div className="vbox-explain">{v.explain}</div>}
+      {v.explain && <div className="vbox-explain"><strong>AI 대조 설명 (판단이 틀릴 수 있음): </strong>{v.explain}</div>}
       {v.sources?.map((s, k) => (
         <a key={k} className="vbox-src" href={s.url} target="_blank" rel="noopener noreferrer">
           📎 {s.title || s.url}
@@ -85,13 +86,41 @@ function friendlyError(e) {
   return '잠깐 문제가 생겼어요. 아래 버튼으로 다시 해 보세요.';
 }
 
+function findQuickSource(error) {
+  return confusables.find(item => item.correct === error.right &&
+    typeof item.wrong === 'string' && item.wrong.split('/').some(wrong => wrong.trim() === error.wrong) &&
+    typeof item.sourceName === 'string' && item.sourceName.startsWith('국립국어원') &&
+    typeof item.sourceUrl === 'string' && /^https:\/\/(?:www\.)?korean\.go\.kr\//i.test(item.sourceUrl));
+}
+
+function countDuplicateQuickErrors(localErrors, aiErrors) {
+  return localErrors.filter(local => aiErrors.some(ai =>
+    Number.isInteger(ai.start) && Number.isInteger(ai.end) && ai.start === local.start && ai.end === local.end && ai.wrong === local.wrong && ai.right === local.right
+  )).length;
+}
+
+function safeDisplayErrors(original, errors) {
+  const localErrors = findQuickErrors(original);
+  return errors.map(error => {
+    const local = localErrors.find(item => Number.isInteger(error.start) && Number.isInteger(error.end) &&
+      item.start === error.start && item.end === error.end && item.wrong === error.wrong && item.right === error.right);
+    const source = local && findQuickSource(local);
+    return source ? {...error, explain:local.reason, reason:local.reason, officialQuickSource:source} : error;
+  });
+}
+
+function verificationForDisplay(verification, hasOfficialQuickSource) {
+  if (!hasOfficialQuickSource || !verification || ['둘다가능', 'AI교정틀림', '부분'].includes(verification.verdict)) return verification;
+  return {...verification, explain:undefined};
+}
+
 export default function Home() {
   const [text, setText] = useState('');
   const [mode, setMode] = useState('check'); // 'check' | 'dict'
   const [loading, setLoading] = useState(false);
-  const [checkProfile, setCheckProfile] = useState('fast');
   const [elapsedMs, setElapsedMs] = useState(null);
   const requestControllerRef = useRef(null);
+  const retryBackupRef = useRef(null);
   const [result, setResult] = useState(null);
   const [quickActive, setQuickActive] = useState(false);
   const [showExpressionSearch, setShowExpressionSearch] = useState(false);
@@ -156,33 +185,41 @@ export default function Home() {
     setTips(tipsFor(next));
   }
 
+  function restorePreviousResult() {
+    const backup = retryBackupRef.current;
+    if (!backup) return false;
+    retryBackupRef.current = null;
+    verifyRunRef.current++; requestControllerRef.current?.abort();
+    setLoading(false); setProgress('');
+    setResult(backup.result); setVerify(backup.verify); setVerifyStage(backup.verifyStage);
+    setAiRules(backup.aiRules); setElapsedMs(backup.elapsedMs);
+    return true;
+  }
+
   function cancelInspection() {
     verifyRunRef.current++;
     requestControllerRef.current?.abort();
-    setLoading(false); setProgress(''); setVerifyStage('done');
+    setLoading(false); setProgress('');
+    if (restorePreviousResult()) {
+      setErrorMsg({text:'다시 검사를 취소해 이전 검사 결과와 선택을 복원했습니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
+      return;
+    }
+    setVerifyStage('cancelled');
     if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='full');return map;});
-    setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다.'});
+    setErrorMsg({text:'검사를 취소했습니다. 화면에 표시된 결과만 유지하며, 진행 중이던 자료 대조는 끝나지 않았습니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
     setResult(prev => prev ? {...prev, errors:prev.errors.map(e => e.status === 'pending' ? {...e,status:'needs_review'} : e)} : prev);
   }
 
-  async function checkSpellingDirect(inputText, profile = checkProfile) {
+  async function checkSpellingDirect(inputText, profile = 'full') {
     const t = inputText ?? text;
     setErrorMsg(null);
     if (!t.trim()) { setErrorMsg({text:'글을 먼저 입력해 주세요.'}); return; }
-    if (profile === 'fast') {
-      requestControllerRef.current?.abort(); verifyRunRef.current++;
-      setCheckProfile('fast'); setLoading(false); setProgress(''); setElapsedMs(null);
-      setResult(null); setDictResult(null); setVerify({}); setVerifyStage(''); setAiRules([]);
-      setQuickActive(true);
-      setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
-      return;
-    }
-    if (t.trim().length < 2) { setErrorMsg({text:'조금 더 길게 입력해 주세요.'}); return; }
-    setQuickActive(false);
+    retryBackupRef.current = profile === 'thorough' && result ? {result, verify, verifyStage, aiRules, elapsedMs} : null;
+    setQuickActive(true);
     requestControllerRef.current?.abort();
     const controller = new AbortController(); requestControllerRef.current = controller;
     const runId = ++verifyRunRef.current, startedAt = Date.now();
-    setCheckProfile(profile); setElapsedMs(null);
+    setElapsedMs(null);
     setVerify({}); setVerifyStage(''); setAiRules([]);
     setLoading(true); setResult(null); setDictResult(null);
     try {
@@ -200,17 +237,23 @@ export default function Home() {
       const errors = anchorEdits(t,candidates);
       const parsed = {originalText:t,errors,profile,hasErrors:errors.length>0,overallComment:errors.length?'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.':'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.'};
       setResult(parsed);
-      setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+      if (!findQuickErrors(t).length) setTimeout(() => { if (verifyRunRef.current === runId) resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}); },100);
       if(!errors.length)setElapsedMs(Date.now()-startedAt);
       runVerify(t,parsed,runId,{profile:apiProfile,signal:controller.signal,startedAt});
     } catch(e) {
-      if(verifyRunRef.current===runId && e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'check'});
+      controller.abort();
+      if(verifyRunRef.current===runId && e?.name!=='AbortError') {
+        const restored = restorePreviousResult();
+        setErrorMsg(restored
+          ? {text:friendlyError(e) + ' 검사가 끝나지 않아 나머지 요청을 중단하고 이전 검사 결과와 선택을 복원했습니다. 다시 시도하려면 아래 결과의 자료 검색까지 다시 검사 버튼을 눌러 주세요.'}
+          : {text:friendlyError(e) + ' 검사가 끝나지 않아 나머지 요청을 중단했습니다. 부분 결과는 표시하지 않습니다.',retry:'check'});
+      }
     } finally {if(verifyRunRef.current===runId){setLoading(false);setProgress('');}}
   }
 
   async function runVerify(original,parsed,runId,options) {
     const errs=parsed?.errors||[];
-    if(!errs.length){setVerifyStage('');return;}
+    if(!errs.length){retryBackupRef.current=null;setVerifyStage('done');return;}
     const localOnly=options.profile==='fast';
     fetchRules(errs.map(e=>e.rule||''),options.signal).then(r=>{if(verifyRunRef.current===runId)setAiRules(r);});
     const items=errs.map(e=>({id:e.id,wrong:e.wrong,right:e.right,rule:e.rule||'',context:contextOf(original,e)}));
@@ -229,9 +272,16 @@ export default function Home() {
         r2.forEach(v=>{map[v.id]={...v,verificationFailed:!!(v.verificationFailed||map[v.id]?.verificationFailed)};});
         setVerify({...map});
       }
-      if(verifyRunRef.current===runId){setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);}
+      if(verifyRunRef.current===runId){
+        if (Object.values(map).some(v=>v.verificationFailed) && restorePreviousResult()) {
+          setErrorMsg({text:'자료 대조가 끝나지 않아 이전 검사 결과와 선택을 복원했습니다. 다시 시도해 주세요.'});
+          return;
+        }
+        retryBackupRef.current=null; setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);
+      }
     } catch(e) {
       if(verifyRunRef.current===runId&&e?.name!=='AbortError'){
+        if (restorePreviousResult()) { setErrorMsg({text:'자료 대조가 끝나지 않아 이전 검사 결과와 선택을 복원했습니다. 다시 시도해 주세요.'}); return; }
         items.forEach(it=>{if(!map[it.id])map[it.id]=missingVerification(it,localOnly);});
         setResult(prev=>prev?.originalText===original?{...prev,errors:applyVerifiedEdits(original,prev.errors,map)}:prev);
         setVerify({...map});setVerifyStage('done');setElapsedMs(Date.now()-options.startedAt);
@@ -248,8 +298,8 @@ export default function Home() {
     const t=(inputText||text).trim();setErrorMsg(null);
     if(!t){setErrorMsg({text:'찾을 단어를 먼저 입력해 주세요.'});return;}
     if(t.length>30){setErrorMsg({text:'사전은 단어 하나만 찾을 수 있어요. 단어만 남기고 다시 눌러 주세요.'});return;}
-    requestControllerRef.current?.abort();const controller=new AbortController();requestControllerRef.current=controller;
-    const runId=++verifyRunRef.current;setVerifyStage('');setElapsedMs(null);
+    retryBackupRef.current=null; requestControllerRef.current?.abort();const controller=new AbortController();requestControllerRef.current=controller;
+    const runId=++verifyRunRef.current;setMode('dict');setVerify({});setAiRules([]);setVerifyStage('');setElapsedMs(null);
     setLoading(true);setResult(null);setDictResult(null);setQuickActive(false);
     try{const parsed=await callAI('dict',t,'','',{signal:controller.signal});if(verifyRunRef.current!==runId)return;parsed.searchWord=t;setDictResult(parsed);setTimeout(()=>resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);}
     catch(e){if(verifyRunRef.current===runId&&e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'dict'});}
@@ -275,6 +325,7 @@ export default function Home() {
   }
 
   function updateInput(value) {
+    retryBackupRef.current=null;
     requestControllerRef.current?.abort(); verifyRunRef.current++;
     setLoading(false); setProgress(''); setVerifyStage(''); setResult(null); setDictResult(null); setErrorMsg(null);
     setText(value);
@@ -283,12 +334,14 @@ export default function Home() {
   function applyQuick(error) {
     if (!Number.isInteger(error.start) || !Number.isInteger(error.end) || error.start < 0 || error.end <= error.start || text.slice(error.start,error.end) !== error.wrong) return;
     updateInput(text.slice(0,error.start) + error.right + text.slice(error.end));
+    setErrorMsg({text:'글을 바꾸어 이전 검사 결과를 지웠습니다. 진행 중이었다면 검사를 중단했지만 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다. 맞춤법 검사를 다시 눌러 주세요.'});
   }
 
   async function checkSpelling() { await checkSpellingDirect(); }
   async function searchDict() { await searchDictDirect(); }
 
   function clearAll() {
+    retryBackupRef.current=null;
     requestControllerRef.current?.abort(); setLoading(false); setProgress(''); setElapsedMs(null);
     verifyRunRef.current++; setVerify({}); setVerifyStage(''); setAiRules([]);
     setText(''); setResult(null); setDictResult(null); setQuickActive(false); setErrorMsg(null);
@@ -296,6 +349,7 @@ export default function Home() {
 
   function closeTemplates(target = 'tab') {
     setShowTemplates(false);
+    setShowExpressionSearch(false);
     setPendingTemplate(null);
     setTemplateNotice('');
     setTimeout(() => {
@@ -315,7 +369,7 @@ export default function Home() {
   function applyTemplate(body, method = 'replace') {
     const next = insertTemplate(text, body, method);
     if (!next.ok) { setTemplateNotice(next.error); return; }
-    requestControllerRef.current?.abort();setLoading(false);setElapsedMs(null);
+    retryBackupRef.current=null; requestControllerRef.current?.abort();setLoading(false);setElapsedMs(null);
     verifyRunRef.current++;
     recognitionRef.current?.abort?.();
     setIsRecording(false);
@@ -416,7 +470,10 @@ export default function Home() {
   }
 
   const correction = result ? buildCorrection(result.originalText, result.errors) : null;
-  const quickErrors = quickActive ? findQuickErrors(text) : [];
+  const displayErrors = result ? safeDisplayErrors(result.originalText, result.errors) : [];
+  const quickErrors = quickActive ? findQuickErrors(text).map(error => ({...error, source:findQuickSource(error)})) : [];
+  const currentQuickErrors = result?.originalText === text && mode === 'check' ? quickErrors : [];
+  const duplicateQuickCount = result ? countDuplicateQuickErrors(currentQuickErrors, result.errors) : 0;
 
   useEffect(() => {
     copySequenceRef.current++;
@@ -424,11 +481,14 @@ export default function Home() {
   }, [correction?.text]);
 
   function renderEvidence(err, i) {
+    const verification = verify[err.id];
+    const shownVerification = verificationForDisplay(verification, !!err.officialQuickSource);
     return <>
+      {err.officialQuickSource && <p>참고 자료: <a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">{err.officialQuickSource.sourceName}</a>. 이 링크는 별도 자료이며 AI 대조 완료를 뜻하지 않습니다.</p>}
       {verify[err.id]
         ? (verify[err.id].source === 'nikl' && <RuleBox rule={verify[err.id].rule} quote={verify[err.id].ruleQuote} />)
         : <RuleBox rule={aiRules[i]} pending={verifyStage === 'nikl' ? 'nikl' : 'ai'} />}
-      <VerifyBox v={verify[err.id]} stage={verifyStage} />
+      <VerifyBox v={shownVerification} stage={verifyStage} />
     </>;
   }
 
@@ -446,17 +506,15 @@ export default function Home() {
 
       <main>
         <nav className="app-feature-switch" aria-label="기능 선택">
-          <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates} onClick={closeTemplates}>글 검사</button>
-          <button type="button" aria-pressed={showTemplates} disabled={loading || isRecording} onClick={() => setShowTemplates(true)}>경조사 문구</button>
+          <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates && !showExpressionSearch} onClick={closeTemplates}>글 검사</button>
+          <button type="button" aria-pressed={showTemplates} disabled={isRecording} onClick={() => { setShowExpressionSearch(false); setShowTemplates(true); }}>경조사 문구</button>
+          <button type="button" aria-pressed={showExpressionSearch} onClick={() => { setShowTemplates(false); setPendingTemplate(null); setShowExpressionSearch(true); }}>자주 헷갈리는 표현</button>
         </nav>
-        <section className="check-speed-options" hidden={showTemplates} aria-label="검사 방식">
-          <div role="group" aria-label="검사 속도 선택">
-            <button type="button" aria-pressed={checkProfile==='fast'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('fast')}>빠른 검사</button>
-            <button type="button" aria-pressed={checkProfile==='full'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('full')}>전체 검사</button>
-            <button type="button" aria-pressed={checkProfile==='thorough'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('thorough')}>자료 검색 포함</button>
-          </div>
-          <p>{checkProfile==='fast'?'기기에 저장된 규칙으로 검사합니다. 외부 API를 호출하지 않습니다.':checkProfile==='full'?'AI와 공식 자료를 활용해 문장 전체를 검사합니다.':'AI와 공식 자료, 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
-        </section>
+        {(showTemplates || showExpressionSearch) && (loading || ['local','nikl','web'].includes(verifyStage)) && <div className="notice-card" role="status">
+          <p>{loading ? 'AI 검사 또는 사전 찾기가 진행 중입니다.' : '검사 결과를 자료와 대조 중입니다.'} 완료까지 시간이 걸릴 수 있습니다.</p>
+          <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
+        </div>}
+        {(showTemplates || showExpressionSearch) && !loading && errorMsg && <div className="notice-card" role="alert"><p>{errorMsg.text}</p><button type="button" className="check-cancel" onClick={closeTemplates}>글 검사로 돌아가기</button></div>}
         <div hidden={!showTemplates} className="phrase-panel">
           <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
           {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
@@ -471,7 +529,21 @@ export default function Home() {
           {templateNotice && <p className="template-inline-notice" role="alert">{templateNotice}</p>}
           <MessageTemplates onUse={requestTemplate} onClose={closeTemplates} onFindDictionary={findCeremonyTerm} />
         </div>
-        <div hidden={showTemplates}>
+        {showExpressionSearch && <section id="expression-search" className="expression-search" aria-labelledby="expression-title">
+          <h2 id="expression-title">자주 헷갈리는 표현</h2>
+          <p>검사할 글과 별도로 표현 자료를 검색합니다.</p>
+          <form onSubmit={searchExpressions}>
+            <label htmlFor="expression-query">찾을 표현</label>
+            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">자료 검색</button></div>
+          </form>
+          {expressionStatus && <p role="status">{expressionStatus}</p>}
+          {expressionResults?.map((item, i) => <article className="expression-item" key={item.id ?? i}>
+            <h3>{item.correct}</h3>{item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
+            <p>{item.explanation}</p>{item.example && <p>예) {item.example}</p>}
+            {item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl) ? <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">출처: {item.sourceName || item.sourceUrl}</a> : item.sourceName && <p>출처: {item.sourceName}</p>}
+          </article>)}
+        </section>}
+        <div hidden={showTemplates || showExpressionSearch}>
         {/* 입력 카드 */}
         <div className="card">
           <div className="card-head">
@@ -500,49 +572,35 @@ export default function Home() {
             {isRecording && <span className="rec-status show">● 녹음 중...</span>}
           </div>
           <p style={{ margin: '12px 0', padding: '12px 14px', border: '1px solid #a56b35', borderRadius: 8, background: '#fff8e8', color: '#55300f', lineHeight: 1.6 }}>
-            빠른 검사는 글을 외부로 보내지 않습니다. 전체 검사와 기존 사전 검색은 입력한 글을 외부 AI 서비스로 전송합니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
+            맞춤법 검사와 사전 검색은 입력한 글을 외부 AI 서비스로 전송하며 API 이용 비용이 발생할 수 있습니다. 검사는 시간이 걸릴 수 있습니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
           </p>
           <div className="btn-row">
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
-              onClick={() => { setMode('check'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); checkSpellingDirect(); }}
+              onClick={() => { setMode('check'); checkSpellingDirect(); }}
               disabled={loading}
-            >✏️ 맞춤법</button>
+            >맞춤법 검사</button>
             <button
               className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
-              onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
+              onClick={() => searchDictDirect()}
               disabled={loading}
-            >📖 사전</button>
-            <button type="button" className={`btn-mode${showExpressionSearch ? ' active' : ''}`} aria-expanded={showExpressionSearch} aria-controls="expression-search" onClick={() => setShowExpressionSearch(value => !value)}>자주 헷갈리는 표현</button>
+            >사전 찾기</button>
           </div>
         </div>
 
-        {showExpressionSearch && <section id="expression-search" className="expression-search" aria-labelledby="expression-title">
-          <h2 id="expression-title">자주 헷갈리는 표현</h2>
-          <p>검사할 글과 별도로 표현 자료를 검색합니다.</p>
-          <form onSubmit={searchExpressions}>
-            <label htmlFor="expression-query">찾을 표현</label>
-            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">자료 검색</button></div>
-          </form>
-          {expressionStatus && <p role="status">{expressionStatus}</p>}
-          {expressionResults?.map((item, i) => <article className="expression-item" key={item.id ?? i}>
-            <h3>{item.correct}</h3>{item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
-            <p>{item.explanation}</p>{item.example && <p>예) {item.example}</p>}
-            {item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl) ? <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">출처: {item.sourceName || item.sourceUrl}</a> : item.sourceName && <p>출처: {item.sourceName}</p>}
-          </article>)}
-        </section>}
+
 
         {quickActive && mode === 'check' && <div className="result-card show quick-results" ref={resultRef} aria-live="polite">
-          <div className="score-banner"><div className="score-text"><h3>빠른 검사 {quickErrors.length}곳</h3><p>일부 표현만 찾는 검사입니다. 문장 전체의 정확성을 보장하지 않습니다.</p></div></div>
-          <div className="errors-sec">{quickErrors.length === 0 ? <p>빠른 검사에서 찾은 항목이 없어요. 문장 전체는 전체 검사에서 확인할 수 있어요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div><div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
+          <div className="score-banner"><div className="score-text"><h3>먼저 찾은 표현 {quickErrors.length}곳</h3><p>일부 표현만 찾은 참고 결과입니다. 직접 확인하고 바꿀 수 있습니다.</p></div></div>
+          <div className="errors-sec">{quickErrors.length === 0 ? <p>먼저 찾은 표현은 없어요. AI 검사 결과도 확인해 주세요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div>{err.source && <p><a href={err.source.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.source.sourceName}</a></p>}<div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
         </div>}
 
         {/* 로딩 */}
         {loading && (
           <div className="loading-card show">
             <div className="spinner"></div>
-            <p className="loading-text">{mode === 'dict' ? '사전을 찾고 있습니다...' : '글을 꼼꼼히 살펴보고 있습니다...'}</p>
-            <p className="loading-hint">{progress || '오류 후보를 찾고 있어요. 자동 재시도 없이 결과를 확인합니다.'}</p>
+            <p className="loading-text">{mode === 'dict' ? '사전을 찾고 있습니다...' : 'AI가 글을 검사하고 있습니다...'}</p>
+            <p className="loading-hint">{progress || '시간이 걸릴 수 있습니다. AI 검사 후 국립국어원 공식 자료와 대조합니다.'}</p>
             <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
           </div>
         )}
@@ -567,9 +625,11 @@ export default function Home() {
               <div className="score-text">
                 <h3>{result.hasErrors ? `AI 제안 ${result.errors.length}곳 · 적용 ${correction.appliedCount}곳` : 'AI 교정 제안이 없어요'}</h3>
                 <p>{result.overallComment}</p>
+                {!result.hasErrors && currentQuickErrors.length > 0 && <p>먼저 찾은 표현 {currentQuickErrors.length}곳은 위에서 확인해 주세요.</p>}
+                {duplicateQuickCount > 0 && <p>먼저 찾은 표현 중 {duplicateQuickCount}곳은 아래 AI 제안과 같은 내용입니다.</p>}
               </div>
             </div>
-            {verifyStage && verifyStage !== 'done' && verifyStage !== 'error' && (
+            {['local','nikl','web'].includes(verifyStage) && (
               <div className="verify-status">
                 <div className="spinner small"></div>
                 {verifyStage === 'local' ? '제공된 공식 자료로 독립 대조 중입니다. 실시간 웹 검색은 생략합니다.' : verifyStage === 'nikl' ? '국립국어원 자료로 한 번 더 확인하고 있어요' : '국립국어원에 없는 항목은 웹에서 찾고 있어요'}
@@ -578,11 +638,11 @@ export default function Home() {
             )}
             {verifyStage === 'done' && (
               <div className="verify-status done">
-                AI의 공식 자료 대조 결과: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
+                {result.errors.length ? (Object.values(verify).some(v => v.verificationFailed) ? '공식 자료 대조를 마쳤지만 일부 확인에 실패했습니다.' : '공식 자료 대조를 마쳤습니다.') : 'AI가 제안한 항목이 없어 자료 대조할 항목이 없습니다.'} 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
               </div>
             )}
-            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'전체 검사':'자료 검색 포함'} 완료 · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
-            {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>더 많은 자료를 찾아 원문부터 다시 검사합니다. 직접 선택한 적용·유지 내용은 초기화되며 시간이 더 걸립니다.</p></div>}
+            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'AI 검사와 자료 대조 종료':'자료 검색 포함 검사 종료'} · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
+            {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문을 AI에 다시 보내고 웹 자료도 찾습니다. API 이용 비용이 추가로 발생할 수 있고 시간이 더 걸립니다. 직접 선택한 적용·유지 내용은 초기화됩니다.</p></div>}
             <div className="corrected-sec">
               <div className="sec-label">교정된 글</div>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
@@ -594,7 +654,7 @@ export default function Home() {
                   <button type="button" aria-pressed={reviewMode === 'all'} onClick={() => setReviewMode('all')}>전체 목록</button>
                   <button type="button" aria-pressed={reviewMode === 'simple'} onClick={() => setReviewMode('simple')}>하나씩 크게 확인</button>
                 </div>
-                {reviewMode === 'simple' ? <EasyReview original={result.originalText} errors={result.errors} verify={verify} verifyStage={verifyStage} onChoose={chooseCorrection} renderDetails={renderEvidence} /> : result.errors.map((err, i) => (
+                {reviewMode === 'simple' ? <EasyReview original={result.originalText} errors={displayErrors} verify={verify} verifyStage={verifyStage} onChoose={chooseCorrection} renderDetails={renderEvidence} /> : displayErrors.map((err, i) => (
                   <div key={err.id} className="error-item" style={{animationDelay: i*0.05+'s'}}>
                     <div className="err-num">{i+1}</div>
                     <div className="err-body">
@@ -606,6 +666,7 @@ export default function Home() {
                       </div>
                       {err.aiRight && <div className="err-override">AI의 공식 자료 대조 결과 제안: {err.aiRight} → {err.right}. 자료 발견이 정답을 보장하지는 않습니다.</div>}
                       <div className="err-reason">{err.explain || err.reason}</div>
+                      {err.officialQuickSource && <p><a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.officialQuickSource.sourceName}</a> (별도 참고 자료)</p>}
                       {err.example && <div className="err-example">예) {err.example}</div>}
                       <p>{err.manual === 'apply' ? '직접 적용 선택' : err.manual === 'keep' ? '직접 원문 유지 선택' : err.status === 'applied' ? 'AI의 공식 자료 대조 결과를 적용했어요' : err.status === 'pending' ? '자료 대조 중 · 원문 유지' : err.status === 'kept' && verify[err.id]?.source === 'nikl' && verify[err.id]?.verdict === '둘다가능' ? '원문도 허용되어 유지' : err.status === 'kept' ? '원문 유지' : '근거 미확인 제안 · 원문 유지'}</p>
                       {(err.start === null || err.overlap) && <p>위치가 모호하거나 다른 제안과 겹쳐 적용할 수 없어요.</p>}

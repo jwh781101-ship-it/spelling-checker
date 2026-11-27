@@ -107,21 +107,31 @@ export default function MessageTemplates({ onUse, onClose, onFindDictionary }) {
       {tab === 'envelope' && <EnvelopeGuide />}
       {tab === 'terms' && <FuneralTerms onFindDictionary={onFindDictionary} />}
       <div hidden={tab !== 'write'}>
-        <div className="mt-categories" role="group" aria-label="문구 범주">
+        <section className="mt-choice-section" aria-labelledby="mt-situation-heading">
+          <h3 id="mt-situation-heading" className="mt-section-title">1. 상황 선택</h3>
+          <div className="mt-categories" role="group" aria-labelledby="mt-situation-heading">
           {categories.map((category) => <button type="button" className="mt-category" aria-pressed={categoryId === category.id} key={category.id} onClick={() => requestAction({kind:'category', value:category.id})}>
             {category.id === 'bereavement-comfort' ? '부고 받고 보내는 위로' : category.id === 'funeral-gratitude' ? '장례 마친 사람이 감사' : category.label}
           </button>)}
         </div>
-        <div className="mt-length" role="group" aria-label="문구 길이">
+        </section>
+        <section className="mt-choice-section" aria-labelledby="mt-length-heading">
+          <h3 id="mt-length-heading" className="mt-section-title">2. 문구 길이 선택</h3>
+          <div className="mt-length" role="group" aria-labelledby="mt-length-heading">
           {[['short','짧게'], ['long','정성스럽게']].map(([id,label]) => <button type="button" className="mt-category" key={id} aria-pressed={length === id} onClick={() => requestAction({kind:'length',value:id})}>{label}</button>)}
         </div>
-        <div className="mt-list" aria-label="문구 목록">
-          {filterTemplates(categoryId, length).map((template) => <article className="mt-card" key={template.id}>
-            <h3>{template.label}{template.tone === 'friend' && !template.label.includes('친구') ? ' · 친구에게' : template.tone === 'formal' ? ' · 존댓말' : ''}</h3><p className="mt-preview">{template.body}</p>
+        </section>
+        <section className="mt-choice-section" aria-labelledby="mt-list-heading">
+          <h3 id="mt-list-heading" className="mt-section-title">3. 문구 선택</h3>
+          <p className="mt-section-hint">마음에 드는 문구를 선택한 뒤 아래에서 편집할 수 있습니다.</p>
+          <div className="mt-list">
+          {filterTemplates(categoryId, length).map((template) => <article className={`mt-card${selected?.id === template.id ? ' mt-card-selected' : ''}`} key={template.id}>
+            <h4>{template.label}{template.tone === 'friend' && !template.label.includes('친구') ? ' · 친구에게' : template.tone === 'formal' ? ' · 존댓말' : ''}</h4><p className="mt-preview">{template.body}</p>
             {template.note && <p className="mt-note">{template.note}</p>}
             <button type="button" className="mt-button" aria-pressed={selected?.id === template.id} onClick={() => requestAction({kind:'template',template})} aria-label={`${template.label} 문구 선택`}>{selected?.id === template.id ? '선택됨' : '선택'}</button>
           </article>)}
         </div>
+        </section>
         {selected && <div className="mt-editor" ref={editorRef}>
           <p>선택한 문구: {categories.find((category) => category.id === selected.categoryId)?.label} · {selected.label}</p>
           <label htmlFor="mt-message-body">문구 편집</label><textarea id="mt-message-body" ref={textareaRef} value={body} onChange={editBody} rows={5} />
