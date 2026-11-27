@@ -3,12 +3,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { categories, filterTemplates } from '../data/messageTemplates.mjs';
 import { shareOccasionText } from '../lib/sharing.mjs';
+import { EnvelopeGuide, FuneralTerms } from './CeremonyGuide';
 import './message-templates.css';
 
-export default function MessageTemplates({ onUse, onClose }) {
+export default function MessageTemplates({ onUse, onClose, onFindDictionary }) {
   const [categoryId, setCategoryId] = useState(categories[0].id);
-  const [selected, setSelected] = useState(null);
-  const [body, setBody] = useState('');
+  const [length, setLength] = useState('short');
+  const [tab, setTab] = useState('write');
+  const [selected, setSelected] = useState(() => filterTemplates(categories[0].id, 'short')[0] || null);
+  const [body, setBody] = useState(() => filterTemplates(categories[0].id, 'short')[0]?.body || '');
   const [pending, setPending] = useState(null);
   const [copyStatus, setCopyStatus] = useState('');
   const revision = useRef(0);
@@ -18,6 +21,7 @@ export default function MessageTemplates({ onUse, onClose }) {
   const textareaRef = useRef(null);
   const confirmRef = useRef(null);
   const [navigation, setNavigation] = useState({ target: null, sequence: 0 });
+  const edited = selected && body !== selected.body;
 
   useEffect(() => {
     const target = navigation.target === 'editor' ? editorRef.current : navigation.target === 'confirm' ? confirmRef.current : null;
@@ -29,34 +33,36 @@ export default function MessageTemplates({ onUse, onClose }) {
     }
   }, [navigation]);
 
-  function navigateTo(target) {
-    setNavigation((current) => ({ target, sequence: current.sequence + 1 }));
-  }
-
-  function choose(template) {
+  function navigateTo(target) { setNavigation((current) => ({ target, sequence: current.sequence + 1 })); }
+  function applyAction(action) {
+    setPending(null);
+    if (action.kind === 'tab') { setTab(action.value); return; }
+    let template = action.template;
+    if (action.kind === 'category') {
+      setCategoryId(action.value);
+      template = filterTemplates(action.value, length)[0] || null;
+    } else if (action.kind === 'length') {
+      setLength(action.value);
+      template = filterTemplates(categoryId, action.value)[0] || null;
+    }
     revision.current += 1;
     setSelected(template);
-    setBody(template.body);
-    setPending(null);
+    setBody(template?.body || '');
     setCopyStatus('');
-    navigateTo('editor');
+    if (action.kind === 'template') navigateTo('editor');
   }
-
-  function requestSelection(template) {
-    if (selected && body !== selected.body) {
-      setPending(template);
-      navigateTo('confirm');
-    } else {
-      choose(template);
+  function requestAction(action) {
+    if ((action.kind === 'category' && action.value === categoryId) ||
+        (action.kind === 'length' && action.value === length) ||
+        (action.kind === 'tab' && action.value === tab)) return;
+    if (action.kind === 'template' && action.template.id === selected?.id) {
+      navigateTo('editor');
+      return;
     }
+    if (edited) { setPending(action); navigateTo('confirm'); }
+    else applyAction(action);
   }
-
-  function editBody(event) {
-    revision.current += 1;
-    setBody(event.target.value);
-    setCopyStatus('');
-  }
-
+  function editBody(event) { revision.current += 1; setBody(event.target.value); setCopyStatus(''); }
   async function copyBody() {
     const currentRevision = revision.current;
     setCopyStatus('');
@@ -66,78 +72,67 @@ export default function MessageTemplates({ onUse, onClose }) {
       if (revision.current === currentRevision) setCopyStatus('복사했습니다.');
     } catch {
       if (revision.current === currentRevision) {
-        setCopyStatus('복사하지 못했습니다. 편집창의 글을 직접 선택해 복사하거나 다시 시도해 주세요.');
+        textareaRef.current?.focus();
+        textareaRef.current?.select();
+        setCopyStatus('자동 복사하지 못했습니다. 선택된 글을 Ctrl+C 또는 길게 눌러 복사해 주세요.');
       }
     }
   }
-
   async function shareBody() {
     if (shareInFlight.current || !body.trim()) return;
     const currentRevision = revision.current;
-    shareInFlight.current = true;
-    setIsSharing(true);
-    setCopyStatus('');
+    shareInFlight.current = true; setIsSharing(true); setCopyStatus('');
     try {
       const result = await shareOccasionText(body, navigator);
       if (revision.current === currentRevision) setCopyStatus(result.message);
     } catch {
       if (revision.current === currentRevision) setCopyStatus('공유창을 열지 못했습니다. 문구 복사 버튼을 이용해 주세요.');
-    } finally {
-      shareInFlight.current = false;
-      setIsSharing(false);
-    }
+    } finally { shareInFlight.current = false; setIsSharing(false); }
   }
 
   return (
     <section className="mt-root" aria-label="경조사 문구 예문">
-      <div className="mt-heading">
-        <div>
-          <h2>경조사 문구</h2>
-          <p>상황과 관계에 맞게 고쳐 쓰는 예문입니다. 자동 발송되지 않습니다.</p>
-        </div>
+      <div className="mt-heading"><div><h2>경조사 문구</h2><p>상황과 관계에 맞게 고쳐 쓰는 예문입니다. 자동 발송되지 않습니다.</p></div>
         {onClose && <button type="button" className="mt-button mt-close" onClick={onClose}>닫기</button>}
       </div>
-      <div className="mt-categories" role="group" aria-label="문구 범주">
-        {categories.map((category) => (
-          <button type="button" className="mt-category" aria-pressed={categoryId === category.id} key={category.id} onClick={() => setCategoryId(category.id)}>
-            {category.label}
-          </button>
-        ))}
-      </div>
-      <div className="mt-list" aria-label="문구 목록">
-        {filterTemplates(categoryId).map((template) => (
-          <article className="mt-card" key={template.id}>
-            <h3>{template.label}</h3>
-            <p className="mt-preview">{template.body}</p>
-            {template.note && <p className="mt-note">{template.note}</p>}
-            <button type="button" className="mt-button" onClick={() => requestSelection(template)} aria-label={`${template.label} 문구 선택`}>선택</button>
-          </article>
-        ))}
-      </div>
-      {pending && (
-        <div className="mt-confirm" ref={confirmRef} tabIndex={-1} role="group" aria-label="편집 내용 변경 확인">
-          <p>편집한 내용이 있습니다. 다른 문구를 선택하면 편집한 내용이 사라집니다. 바꾸시겠어요?</p>
-          <div className="mt-actions">
-            <button type="button" className="mt-button" onClick={() => choose(pending)}>확인</button>
-            <button type="button" className="mt-button" onClick={() => { setPending(null); navigateTo('editor'); }}>취소</button>
-          </div>
+      <nav className="mt-tabs" aria-label="경조사 안내 선택">
+        {[['write', '문구 작성'], ['envelope', '봉투 쓰는 법'], ['terms', '부고 용어']].map(([id, label]) =>
+          <button type="button" className="mt-category" key={id} aria-pressed={tab === id} onClick={() => requestAction({kind:'tab', value:id})}>{label}</button>)}
+      </nav>
+      {pending && <div className="mt-confirm" ref={confirmRef} tabIndex={-1} role="group" aria-label="편집 내용 변경 확인">
+        <p>{pending.kind === 'tab' ? '편집한 문구가 있습니다. 이동해도 편집 내용은 유지됩니다. 이동하시겠어요?' : '편집한 내용이 있습니다. 바꾸면 편집한 내용이 사라집니다. 바꾸시겠어요?'}</p>
+        <div className="mt-actions"><button type="button" className="mt-button" onClick={() => applyAction(pending)}>확인</button>
+          <button type="button" className="mt-button" onClick={() => { setPending(null); if (tab === 'write') navigateTo('editor'); }}>취소</button></div>
+      </div>}
+      {tab === 'envelope' && <EnvelopeGuide />}
+      {tab === 'terms' && <FuneralTerms onFindDictionary={onFindDictionary} />}
+      <div hidden={tab !== 'write'}>
+        <div className="mt-categories" role="group" aria-label="문구 범주">
+          {categories.map((category) => <button type="button" className="mt-category" aria-pressed={categoryId === category.id} key={category.id} onClick={() => requestAction({kind:'category', value:category.id})}>
+            {category.id === 'bereavement-comfort' ? '부고 받은 사람에게 위로' : category.id === 'funeral-gratitude' ? '장례 마친 사람이 감사' : category.label}
+          </button>)}
         </div>
-      )}
-      {selected && (
-        <div className="mt-editor" ref={editorRef}>
+        <div className="mt-length" role="group" aria-label="문구 길이">
+          {[['short','짧게'], ['long','정성스럽게']].map(([id,label]) => <button type="button" className="mt-category" key={id} aria-pressed={length === id} onClick={() => requestAction({kind:'length',value:id})}>{label}</button>)}
+        </div>
+        <div className="mt-list" aria-label="문구 목록">
+          {filterTemplates(categoryId, length).map((template) => <article className="mt-card" key={template.id}>
+            <h3>{template.label}{template.tone === 'friend' ? ' · 친구에게' : template.tone === 'formal' ? ' · 존댓말' : ''}</h3><p className="mt-preview">{template.body}</p>
+            {template.note && <p className="mt-note">{template.note}</p>}
+            <button type="button" className="mt-button" aria-pressed={selected?.id === template.id} onClick={() => requestAction({kind:'template',template})} aria-label={`${template.label} 문구 선택`}>{selected?.id === template.id ? '선택됨' : '선택'}</button>
+          </article>)}
+        </div>
+        {selected && <div className="mt-editor" ref={editorRef}>
           <p>선택한 문구: {categories.find((category) => category.id === selected.categoryId)?.label} · {selected.label}</p>
-          <label htmlFor="mt-message-body">문구 편집</label>
-          <textarea id="mt-message-body" ref={textareaRef} value={body} onChange={editBody} rows={5} />
+          <label htmlFor="mt-message-body">문구 편집</label><textarea id="mt-message-body" ref={textareaRef} value={body} onChange={editBody} rows={5} />
           <p className="mt-count">{Array.from(body).length}자</p>
-          <div className="mt-actions">
-            <button type="button" className="mt-button" disabled={!body.trim()} onClick={copyBody}>문구 복사</button>
-            <button type="button" className="mt-button mt-primary" disabled={!body.trim() || typeof onUse !== 'function'} onClick={() => onUse(body)}>맞춤법 검사에 넣기</button>
-          </div>
+          <div className="mt-actions"><button type="button" className="mt-button" disabled={!body.trim()} onClick={copyBody}>문구 복사</button>
+            <button type="button" className="mt-button mt-primary" disabled={!body.trim() || typeof onUse !== 'function'} onClick={() => onUse(body)}>맞춤법 검사에 넣기</button></div>
           <button type="button" className="mt-button mt-share" disabled={!body.trim() || isSharing} onClick={shareBody}>{isSharing ? '공유창 여는 중...' : '카톡·문자로 보내기'}</button>
           <p className="mt-share-hint">공유창에서 카카오톡이나 문자 앱을 선택하고, 받는 사람과 내용을 확인한 뒤 직접 전송해 주세요.</p>
           <p className="mt-status" role="status" aria-live="polite">{copyStatus}</p>
-        </div>
-      )}
+        </div>}
+      </div>
     </section>
   );
 }
