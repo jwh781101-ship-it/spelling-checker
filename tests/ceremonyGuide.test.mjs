@@ -19,8 +19,8 @@ test('앞면 예시와 접근 가능한 선택 상태가 있다', () => {
 });
 
 test('뒷면의 이름과 소속은 독립 상태로 세로 분리되고 입력을 지우면 소속은 빠진다', () => {
-  assert.match(source, /useState\('김민수'\)/);
-  assert.match(source, /useState\('엔씨 모임'\)/);
+  assert.match(source, /useState\('홍길동'\)/);
+  assert.match(source, /useState\('회사이름'\)/);
   assert.match(source, /Array\.from\(value\)\.map/);
   assert.match(source, /example === 'company' && Boolean\(affiliation\.trim\(\)\)/);
   assert.match(source, /<VerticalText value=\{name\} \/>\{showAffiliation && <VerticalText value=\{affiliation\} \/>\}/);
@@ -41,4 +41,11 @@ test('소속 수정과 삭제는 회사 모드로 반영하고 이름 수정은 
   assert.ok(source.includes('onChange={(event) => setName(event.target.value)}'));
   assert.ok(source.includes("example === 'company' && Boolean(affiliation.trim())"));
   assert.ok(source.includes("onClick={() => setExample('name')}"));
+});
+
+test('봉투 앞면 한자와 뒷면 이름 모두 공개 궁서 글꼴을 쓴다',()=>{
+ assert.match(css,/@font-face\s*\{[^}]*font-family:'BareunGungsuh'/);
+ assert.match(css,/\.cg-front-writing\s*\{[^}]*font-family:'BareunGungsuh'/);
+ assert.match(css,/\.cg-back-writing\s*\{[^}]*font-family:'BareunGungsuh'/);
+ assert.match(css,/font-display:swap/);
 });

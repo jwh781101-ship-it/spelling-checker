@@ -17,8 +17,8 @@ export function EnvelopeGuide() {
   const [occasion, setOccasion] = useState('wedding');
   const [side, setSide] = useState('front');
   const [example, setExample] = useState('name');
-  const [name, setName] = useState('김민수');
-  const [affiliation, setAffiliation] = useState('엔씨 모임');
+  const [name, setName] = useState('홍길동');
+  const [affiliation, setAffiliation] = useState('회사이름');
   const id = useId();
   const selected = occasions[occasion];
   const showAffiliation = example === 'company' && Boolean(affiliation.trim());
