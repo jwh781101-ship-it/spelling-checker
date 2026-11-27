@@ -12,7 +12,7 @@
 .mt-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .75em; }
 .mt-card, .mt-confirm, .mt-editor { min-width: 0; padding: .75em; border: 1px solid var(--border, #999); border-radius: .5em; }
 .mt-card { background: var(--paper, #fff); }
-.mt-card h3 { margin: 0 0 .4em; font-size: 1em; }
+.mt-card h4 { margin: 0 0 .4em; font-size: 1em; }
 .mt-preview, .mt-note, .mt-confirm p, .mt-status { overflow-wrap: anywhere; white-space: pre-wrap; }
 .mt-preview { margin: 0 0 .75em; }
 .mt-note { margin: 0 0 .75em; font-size: .9em; }
@@ -29,3 +29,16 @@
 
 .mt-tabs, .mt-length { display:flex; flex-wrap:wrap; gap:.5em; margin:1em 0; }
 .mt-button[aria-pressed='true'] { border-color:var(--accent,#3466b2); box-shadow:inset 0 0 0 2px var(--accent,#3466b2); font-weight:700; }
+
+/* 각 선택 단계를 구분하고, 선택은 색상과 글자로 함께 표시합니다. */
+.mt-choice-section { margin-top: 1.25em; padding-top: 1em; border-top: 1px solid var(--border, #999); }
+.mt-section-title { margin: 0 0 .35em; font-size: 1.05em; line-height: 1.4; }
+.mt-section-hint { margin: 0 0 .75em; font-size: .9em; line-height: 1.5; }
+.mt-choice-section .mt-categories, .mt-choice-section .mt-length { margin: .65em 0 0; }
+.mt-choice-section .mt-category[aria-pressed='true'],
+.mt-card .mt-button[aria-pressed='true'] { background: var(--accent, #6b3d18); color: var(--paper, #fff); border-color: var(--accent, #6b3d18); box-shadow: none; }
+.mt-card-selected { border: 2px solid var(--accent, #6b3d18); padding: calc(.75em - 1px); }
+@media (max-width: 390px) {
+  .mt-choice-section .mt-categories, .mt-choice-section .mt-length { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mt-choice-section .mt-category { width: 100%; }
+}
