@@ -14,7 +14,7 @@ function ReviewItem({ error, index, count, original, errors, verify, verifyStage
   return <section className="er-review" aria-label={`수정 ${index + 1}/${count}`}>
     <h3 className="er-heading">수정 {index + 1}/{count}</h3>
     <p className="er-status" role="status">{state.label}</p>
-    {context && <p className="er-hint">현재 항목만 비교합니다. 전체 결과는 위 교정된 글에서 확인하세요.</p>}
+    {context && <p className="er-hint">현재 항목만 비교합니다. 전체 결과는 위 현재 반영된 글에서 확인하세요.</p>}
     {context ? <div className="er-comparison">
       <div className="er-line"><h4>원문</h4><ContextLine context={context} target={context.target} /></div>
       <div className="er-line"><h4>수정 제안</h4><ContextLine context={context} target={typeof error.right === 'string' ? error.right : ''} /></div>
