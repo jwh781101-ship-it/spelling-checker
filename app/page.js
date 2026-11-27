@@ -89,7 +89,6 @@ export default function Home() {
   const [text, setText] = useState('');
   const [mode, setMode] = useState('check'); // 'check' | 'dict'
   const [loading, setLoading] = useState(false);
-  const [checkProfile, setCheckProfile] = useState('fast');
   const [elapsedMs, setElapsedMs] = useState(null);
   const requestControllerRef = useRef(null);
   const [result, setResult] = useState(null);
@@ -159,30 +158,21 @@ export default function Home() {
   function cancelInspection() {
     verifyRunRef.current++;
     requestControllerRef.current?.abort();
-    setLoading(false); setProgress(''); setVerifyStage('done');
+    setLoading(false); setProgress(''); setVerifyStage('cancelled');
     if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='full');return map;});
-    setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다.'});
+    setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
     setResult(prev => prev ? {...prev, errors:prev.errors.map(e => e.status === 'pending' ? {...e,status:'needs_review'} : e)} : prev);
   }
 
-  async function checkSpellingDirect(inputText, profile = checkProfile) {
+  async function checkSpellingDirect(inputText, profile = 'full') {
     const t = inputText ?? text;
     setErrorMsg(null);
     if (!t.trim()) { setErrorMsg({text:'글을 먼저 입력해 주세요.'}); return; }
-    if (profile === 'fast') {
-      requestControllerRef.current?.abort(); verifyRunRef.current++;
-      setCheckProfile('fast'); setLoading(false); setProgress(''); setElapsedMs(null);
-      setResult(null); setDictResult(null); setVerify({}); setVerifyStage(''); setAiRules([]);
-      setQuickActive(true);
-      setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
-      return;
-    }
-    if (t.trim().length < 2) { setErrorMsg({text:'조금 더 길게 입력해 주세요.'}); return; }
-    setQuickActive(false);
+    setQuickActive(true);
     requestControllerRef.current?.abort();
     const controller = new AbortController(); requestControllerRef.current = controller;
     const runId = ++verifyRunRef.current, startedAt = Date.now();
-    setCheckProfile(profile); setElapsedMs(null);
+    setElapsedMs(null);
     setVerify({}); setVerifyStage(''); setAiRules([]);
     setLoading(true); setResult(null); setDictResult(null);
     try {
@@ -210,7 +200,7 @@ export default function Home() {
 
   async function runVerify(original,parsed,runId,options) {
     const errs=parsed?.errors||[];
-    if(!errs.length){setVerifyStage('');return;}
+    if(!errs.length){setVerifyStage('done');return;}
     const localOnly=options.profile==='fast';
     fetchRules(errs.map(e=>e.rule||''),options.signal).then(r=>{if(verifyRunRef.current===runId)setAiRules(r);});
     const items=errs.map(e=>({id:e.id,wrong:e.wrong,right:e.right,rule:e.rule||'',context:contextOf(original,e)}));
@@ -283,6 +273,7 @@ export default function Home() {
   function applyQuick(error) {
     if (!Number.isInteger(error.start) || !Number.isInteger(error.end) || error.start < 0 || error.end <= error.start || text.slice(error.start,error.end) !== error.wrong) return;
     updateInput(text.slice(0,error.start) + error.right + text.slice(error.end));
+    setErrorMsg({text:'글을 바꾸어 이전 검사 결과를 지웠습니다. 진행 중이었다면 검사를 중단했지만 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다. 맞춤법 검사를 다시 눌러 주세요.'});
   }
 
   async function checkSpelling() { await checkSpellingDirect(); }
@@ -296,6 +287,7 @@ export default function Home() {
 
   function closeTemplates(target = 'tab') {
     setShowTemplates(false);
+    setShowExpressionSearch(false);
     setPendingTemplate(null);
     setTemplateNotice('');
     setTimeout(() => {
@@ -446,17 +438,10 @@ export default function Home() {
 
       <main>
         <nav className="app-feature-switch" aria-label="기능 선택">
-          <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates} onClick={closeTemplates}>글 검사</button>
-          <button type="button" aria-pressed={showTemplates} disabled={loading || isRecording} onClick={() => setShowTemplates(true)}>경조사 문구</button>
+          <button type="button" ref={checkFeatureRef} aria-pressed={!showTemplates && !showExpressionSearch} onClick={closeTemplates}>글 검사</button>
+          <button type="button" aria-pressed={showTemplates} disabled={loading || isRecording} onClick={() => { setShowExpressionSearch(false); setShowTemplates(true); }}>경조사 문구</button>
+          <button type="button" aria-pressed={showExpressionSearch} onClick={() => { setShowTemplates(false); setPendingTemplate(null); setShowExpressionSearch(true); }}>자주 헷갈리는 표현</button>
         </nav>
-        <section className="check-speed-options" hidden={showTemplates} aria-label="검사 방식">
-          <div role="group" aria-label="검사 속도 선택">
-            <button type="button" aria-pressed={checkProfile==='fast'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('fast')}>빠른 검사</button>
-            <button type="button" aria-pressed={checkProfile==='full'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('full')}>전체 검사</button>
-            <button type="button" aria-pressed={checkProfile==='thorough'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('thorough')}>자료 검색 포함</button>
-          </div>
-          <p>{checkProfile==='fast'?'기기에 저장된 규칙으로 검사합니다. 외부 API를 호출하지 않습니다.':checkProfile==='full'?'AI와 공식 자료를 활용해 문장 전체를 검사합니다.':'AI와 공식 자료, 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
-        </section>
         <div hidden={!showTemplates} className="phrase-panel">
           <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
           {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
@@ -471,7 +456,21 @@ export default function Home() {
           {templateNotice && <p className="template-inline-notice" role="alert">{templateNotice}</p>}
           <MessageTemplates onUse={requestTemplate} onClose={closeTemplates} onFindDictionary={findCeremonyTerm} />
         </div>
-        <div hidden={showTemplates}>
+        {showExpressionSearch && <section id="expression-search" className="expression-search" aria-labelledby="expression-title">
+          <h2 id="expression-title">자주 헷갈리는 표현</h2>
+          <p>검사할 글과 별도로 표현 자료를 검색합니다.</p>
+          <form onSubmit={searchExpressions}>
+            <label htmlFor="expression-query">찾을 표현</label>
+            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">자료 검색</button></div>
+          </form>
+          {expressionStatus && <p role="status">{expressionStatus}</p>}
+          {expressionResults?.map((item, i) => <article className="expression-item" key={item.id ?? i}>
+            <h3>{item.correct}</h3>{item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
+            <p>{item.explanation}</p>{item.example && <p>예) {item.example}</p>}
+            {item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl) ? <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">출처: {item.sourceName || item.sourceUrl}</a> : item.sourceName && <p>출처: {item.sourceName}</p>}
+          </article>)}
+        </section>}
+        <div hidden={showTemplates || showExpressionSearch}>
         {/* 입력 카드 */}
         <div className="card">
           <div className="card-head">
@@ -500,49 +499,35 @@ export default function Home() {
             {isRecording && <span className="rec-status show">● 녹음 중...</span>}
           </div>
           <p style={{ margin: '12px 0', padding: '12px 14px', border: '1px solid #a56b35', borderRadius: 8, background: '#fff8e8', color: '#55300f', lineHeight: 1.6 }}>
-            빠른 검사는 글을 외부로 보내지 않습니다. 전체 검사와 기존 사전 검색은 입력한 글을 외부 AI 서비스로 전송합니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
+            맞춤법 검사와 사전 검색은 입력한 글을 외부 AI 서비스로 전송하며 API 이용 비용이 발생할 수 있습니다. 검사는 시간이 걸릴 수 있습니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
           </p>
           <div className="btn-row">
             <button
               className={`btn-mode${mode === 'check' ? ' active' : ''}`}
               onClick={() => { setMode('check'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); checkSpellingDirect(); }}
               disabled={loading}
-            >✏️ 맞춤법</button>
+            >맞춤법 검사</button>
             <button
               className={`btn-mode${mode === 'dict' ? ' active' : ''}`}
               onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
               disabled={loading}
-            >📖 사전</button>
-            <button type="button" className={`btn-mode${showExpressionSearch ? ' active' : ''}`} aria-expanded={showExpressionSearch} aria-controls="expression-search" onClick={() => setShowExpressionSearch(value => !value)}>자주 헷갈리는 표현</button>
+            >사전 찾기</button>
           </div>
         </div>
 
-        {showExpressionSearch && <section id="expression-search" className="expression-search" aria-labelledby="expression-title">
-          <h2 id="expression-title">자주 헷갈리는 표현</h2>
-          <p>검사할 글과 별도로 표현 자료를 검색합니다.</p>
-          <form onSubmit={searchExpressions}>
-            <label htmlFor="expression-query">찾을 표현</label>
-            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">자료 검색</button></div>
-          </form>
-          {expressionStatus && <p role="status">{expressionStatus}</p>}
-          {expressionResults?.map((item, i) => <article className="expression-item" key={item.id ?? i}>
-            <h3>{item.correct}</h3>{item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
-            <p>{item.explanation}</p>{item.example && <p>예) {item.example}</p>}
-            {item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl) ? <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">출처: {item.sourceName || item.sourceUrl}</a> : item.sourceName && <p>출처: {item.sourceName}</p>}
-          </article>)}
-        </section>}
+
 
         {quickActive && mode === 'check' && <div className="result-card show quick-results" ref={resultRef} aria-live="polite">
-          <div className="score-banner"><div className="score-text"><h3>빠른 검사 {quickErrors.length}곳</h3><p>일부 표현만 찾는 검사입니다. 문장 전체의 정확성을 보장하지 않습니다.</p></div></div>
-          <div className="errors-sec">{quickErrors.length === 0 ? <p>빠른 검사에서 찾은 항목이 없어요. 문장 전체는 전체 검사에서 확인할 수 있어요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div><div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
+          <div className="score-banner"><div className="score-text"><h3>먼저 찾은 표현 {quickErrors.length}곳</h3><p>일부 표현만 찾은 참고 결과입니다. 직접 확인하고 바꿀 수 있습니다.</p></div></div>
+          <div className="errors-sec">{quickErrors.length === 0 ? <p>먼저 찾은 표현은 없어요. AI 검사 결과도 확인해 주세요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div><div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
         </div>}
 
         {/* 로딩 */}
         {loading && (
           <div className="loading-card show">
             <div className="spinner"></div>
-            <p className="loading-text">{mode === 'dict' ? '사전을 찾고 있습니다...' : '글을 꼼꼼히 살펴보고 있습니다...'}</p>
-            <p className="loading-hint">{progress || '오류 후보를 찾고 있어요. 자동 재시도 없이 결과를 확인합니다.'}</p>
+            <p className="loading-text">{mode === 'dict' ? '사전을 찾고 있습니다...' : 'AI가 글을 검사하고 있습니다...'}</p>
+            <p className="loading-hint">{progress || '시간이 걸릴 수 있습니다. AI 검사 후 국립국어원 공식 자료와 대조합니다.'}</p>
             <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
           </div>
         )}
@@ -569,7 +554,7 @@ export default function Home() {
                 <p>{result.overallComment}</p>
               </div>
             </div>
-            {verifyStage && verifyStage !== 'done' && verifyStage !== 'error' && (
+            {['local','nikl','web'].includes(verifyStage) && (
               <div className="verify-status">
                 <div className="spinner small"></div>
                 {verifyStage === 'local' ? '제공된 공식 자료로 독립 대조 중입니다. 실시간 웹 검색은 생략합니다.' : verifyStage === 'nikl' ? '국립국어원 자료로 한 번 더 확인하고 있어요' : '국립국어원에 없는 항목은 웹에서 찾고 있어요'}
@@ -578,11 +563,11 @@ export default function Home() {
             )}
             {verifyStage === 'done' && (
               <div className="verify-status done">
-                AI의 공식 자료 대조 결과: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
+                {result.errors.length ? (Object.values(verify).some(v => v.verificationFailed) ? '공식 자료 대조를 마쳤지만 일부 확인에 실패했습니다.' : '공식 자료 대조를 마쳤습니다.') : 'AI가 제안한 항목이 없어 자료 대조할 항목이 없습니다.'} 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
               </div>
             )}
-            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'전체 검사':'자료 검색 포함'} 완료 · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
-            {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>더 많은 자료를 찾아 원문부터 다시 검사합니다. 직접 선택한 적용·유지 내용은 초기화되며 시간이 더 걸립니다.</p></div>}
+            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'AI 검사와 자료 대조 종료':'자료 검색 포함 검사 종료'} · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
+            {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문을 AI에 다시 보내고 웹 자료도 찾습니다. API 이용 비용이 추가로 발생할 수 있고 시간이 더 걸립니다. 직접 선택한 적용·유지 내용은 초기화됩니다.</p></div>}
             <div className="corrected-sec">
               <div className="sec-label">교정된 글</div>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
