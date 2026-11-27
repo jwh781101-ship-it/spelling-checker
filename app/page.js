@@ -278,6 +278,19 @@ export default function Home() {
     closeTemplates('input');
   }
 
+  function findCeremonyTerm(term) {
+    if (loading || isRecording || typeof term !== 'string' || !term.trim()) return;
+    const word = term.trim();
+    if (((text && text !== word) || result || dictResult) && !window.confirm('입력한 글이 검색어로 바뀌고 이전 검사·사전 결과가 사라집니다. 계속하시겠어요?')) return;
+    setText(word);
+    setMode('dict');
+    setVerify({});
+    setShowTemplates(false);
+    setPendingTemplate(null);
+    setTemplateNotice('');
+    searchDictDirect(word);
+  }
+
   function requestTemplate(body) {
     if (loading || isRecording) { setTemplateNotice('검사나 음성 입력을 마친 뒤 문구를 넣어 주세요.'); return; }
     if (typeof body !== 'string' || !body.trim()) { setTemplateNotice('넣을 문구를 먼저 선택해 주세요.'); return; }
@@ -407,7 +420,7 @@ export default function Home() {
             </div>
           </section>}
           {templateNotice && <p className="template-inline-notice" role="alert">{templateNotice}</p>}
-          <MessageTemplates onUse={requestTemplate} onClose={closeTemplates} />
+          <MessageTemplates onUse={requestTemplate} onClose={closeTemplates} onFindDictionary={findCeremonyTerm} />
         </div>
         <div hidden={showTemplates}>
         {/* 입력 카드 */}

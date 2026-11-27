@@ -3,6 +3,7 @@ import { isForeignOrigin, allowRequest } from '../../lib/guard';
 import { knowledgeForText, knowledgeSummary } from '../../lib/kornorms';
 import { parseModelJSON } from '../../lib/knowledge.mjs';
 import { anchorEdits } from '../../lib/corrections.mjs';
+import { getFuneralDictionaryEntry } from '../../data/funeralTerms.mjs';
 export const maxDuration = 60;
 export async function POST(request) {
   try {
@@ -14,6 +15,10 @@ export async function POST(request) {
     if(!['check','dict'].includes(mode)||typeof text!=='string'||!text.trim())return Response.json({error:'검사할 글을 입력해 주세요.'},{status:400});
     const limit=mode==='check'?1200:50;
     if(text.length>limit)return Response.json({error:`한 번에 ${limit}자까지 검사할 수 있습니다. 글을 나누어 주세요.`},{status:400});
+    if(mode==='dict'){
+      const entry=getFuneralDictionaryEntry(text);
+      if(entry)return Response.json({text:JSON.stringify(entry),stop:'end_turn'});
+    }
     if(!process.env.ANTHROPIC_API_KEY)return Response.json({error:'AI 서비스 설정을 확인해 주세요.'},{status:503});
     const before=typeof contextBefore==='string'?contextBefore.slice(-300):'';
     const after=typeof contextAfter==='string'?contextAfter.slice(0,300):'';
