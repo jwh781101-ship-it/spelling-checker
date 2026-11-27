@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { tipsFor } from './data/tips';
+import { findQuickErrors } from './lib/quickCheck.mjs';
 import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
 import EasyReview from './components/EasyReview';
 import MessageTemplates from './components/MessageTemplates';
@@ -92,6 +93,13 @@ export default function Home() {
   const [elapsedMs, setElapsedMs] = useState(null);
   const requestControllerRef = useRef(null);
   const [result, setResult] = useState(null);
+  const [quickActive, setQuickActive] = useState(false);
+  const [showExpressionSearch, setShowExpressionSearch] = useState(false);
+  const [expressionQuery, setExpressionQuery] = useState('');
+  const [expressionResults, setExpressionResults] = useState(null);
+  const [expressionStatus, setExpressionStatus] = useState('');
+  const expressionRunRef = useRef(0);
+  const expressionControllerRef = useRef(null);
   const [dictResult, setDictResult] = useState(null);
   const [tips, setTips] = useState([]);
   const [saved, setSaved] = useState([]);
@@ -118,7 +126,7 @@ export default function Home() {
   const checkFeatureRef = useRef(null);
   const copySequenceRef = useRef(0);
 
-  useEffect(() => () => { verifyRunRef.current++; requestControllerRef.current?.abort(); }, []);
+  useEffect(() => () => { verifyRunRef.current++; requestControllerRef.current?.abort(); expressionRunRef.current++; expressionControllerRef.current?.abort(); }, []);
 
   useEffect(() => {
     if (pendingTemplate !== null) {
@@ -152,7 +160,7 @@ export default function Home() {
     verifyRunRef.current++;
     requestControllerRef.current?.abort();
     setLoading(false); setProgress(''); setVerifyStage('done');
-    if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='fast');return map;});
+    if(result)setVerify(prev=>{const map={...prev};for(const e of result.errors)if(!map[e.id])map[e.id]=missingVerification(e,result.profile==='full');return map;});
     setErrorMsg({text:'검사를 취소했습니다. 입력한 글과 이미 확인된 결과는 유지됩니다.'});
     setResult(prev => prev ? {...prev, errors:prev.errors.map(e => e.status === 'pending' ? {...e,status:'needs_review'} : e)} : prev);
   }
@@ -161,7 +169,16 @@ export default function Home() {
     const t = inputText ?? text;
     setErrorMsg(null);
     if (!t.trim()) { setErrorMsg({text:'글을 먼저 입력해 주세요.'}); return; }
+    if (profile === 'fast') {
+      requestControllerRef.current?.abort(); verifyRunRef.current++;
+      setCheckProfile('fast'); setLoading(false); setProgress(''); setElapsedMs(null);
+      setResult(null); setDictResult(null); setVerify({}); setVerifyStage(''); setAiRules([]);
+      setQuickActive(true);
+      setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
+      return;
+    }
     if (t.trim().length < 2) { setErrorMsg({text:'조금 더 길게 입력해 주세요.'}); return; }
+    setQuickActive(false);
     requestControllerRef.current?.abort();
     const controller = new AbortController(); requestControllerRef.current = controller;
     const runId = ++verifyRunRef.current, startedAt = Date.now();
@@ -169,11 +186,12 @@ export default function Home() {
     setVerify({}); setVerifyStage(''); setAiRules([]);
     setLoading(true); setResult(null); setDictResult(null);
     try {
+      const apiProfile = profile === 'full' ? 'fast' : profile;
       const chunks = splitTextWithContext(t); let done = 0;
       setProgress(chunks.length > 1 ? '글을 나누어 살펴보고 있어요 (0/' + chunks.length + ')' : '');
       const parts = await Promise.all(chunks.map(async c => {
         if (!c.text.trim()) return {errors:[]};
-        const r = await callAI('check',c.text,c.contextBefore,c.contextAfter,{profile,signal:controller.signal});
+        const r = await callAI('check',c.text,c.contextBefore,c.contextAfter,{profile:apiProfile,signal:controller.signal});
         if (verifyRunRef.current === runId) { done++; if(chunks.length > 1)setProgress('글을 나누어 살펴보고 있어요 ('+done+'/'+chunks.length+')'); }
         return r;
       }));
@@ -184,7 +202,7 @@ export default function Home() {
       setResult(parsed);
       setTimeout(() => resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);
       if(!errors.length)setElapsedMs(Date.now()-startedAt);
-      runVerify(t,parsed,runId,{profile,signal:controller.signal,startedAt});
+      runVerify(t,parsed,runId,{profile:apiProfile,signal:controller.signal,startedAt});
     } catch(e) {
       if(verifyRunRef.current===runId && e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'check'});
     } finally {if(verifyRunRef.current===runId){setLoading(false);setProgress('');}}
@@ -232,10 +250,39 @@ export default function Home() {
     if(t.length>30){setErrorMsg({text:'사전은 단어 하나만 찾을 수 있어요. 단어만 남기고 다시 눌러 주세요.'});return;}
     requestControllerRef.current?.abort();const controller=new AbortController();requestControllerRef.current=controller;
     const runId=++verifyRunRef.current;setVerifyStage('');setElapsedMs(null);
-    setLoading(true);setResult(null);setDictResult(null);
+    setLoading(true);setResult(null);setDictResult(null);setQuickActive(false);
     try{const parsed=await callAI('dict',t,'','',{signal:controller.signal});if(verifyRunRef.current!==runId)return;parsed.searchWord=t;setDictResult(parsed);setTimeout(()=>resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}),100);}
     catch(e){if(verifyRunRef.current===runId&&e?.name!=='AbortError')setErrorMsg({text:friendlyError(e),retry:'dict'});}
     finally{if(verifyRunRef.current===runId)setLoading(false);}
+  }
+
+  async function searchExpressions(e) {
+    e.preventDefault();
+    const q = expressionQuery.trim();
+    expressionControllerRef.current?.abort();
+    const run = ++expressionRunRef.current;
+    if (!q) { setExpressionResults(null); setExpressionStatus('찾을 표현을 입력해 주세요.'); return; }
+    const controller = new AbortController(); expressionControllerRef.current = controller;
+    setExpressionResults(null); setExpressionStatus('자료를 찾고 있어요.');
+    try {
+      const response = await fetch('/api/expressions?q=' + encodeURIComponent(q), {signal:controller.signal});
+      if (!response.ok) throw new Error('search failed');
+      const data = await response.json();
+      if (!Array.isArray(data.items)) throw new Error('invalid response');
+      if (run !== expressionRunRef.current) return;
+      setExpressionResults(data.items); setExpressionStatus(data.items.length ? '' : '검색 결과가 없어요. 다른 표현으로 검색해 주세요.');
+    } catch (err) { if (run === expressionRunRef.current && err?.name !== 'AbortError') setExpressionStatus('자료를 불러오지 못했어요. 다시 검색해 주세요.'); }
+  }
+
+  function updateInput(value) {
+    requestControllerRef.current?.abort(); verifyRunRef.current++;
+    setLoading(false); setProgress(''); setVerifyStage(''); setResult(null); setDictResult(null); setErrorMsg(null);
+    setText(value);
+  }
+
+  function applyQuick(error) {
+    if (!Number.isInteger(error.start) || !Number.isInteger(error.end) || error.start < 0 || error.end <= error.start || text.slice(error.start,error.end) !== error.wrong) return;
+    updateInput(text.slice(0,error.start) + error.right + text.slice(error.end));
   }
 
   async function checkSpelling() { await checkSpellingDirect(); }
@@ -244,7 +291,7 @@ export default function Home() {
   function clearAll() {
     requestControllerRef.current?.abort(); setLoading(false); setProgress(''); setElapsedMs(null);
     verifyRunRef.current++; setVerify({}); setVerifyStage(''); setAiRules([]);
-    setText(''); setResult(null); setDictResult(null); setErrorMsg(null);
+    setText(''); setResult(null); setDictResult(null); setQuickActive(false); setErrorMsg(null);
   }
 
   function closeTemplates(target = 'tab') {
@@ -273,7 +320,7 @@ export default function Home() {
     recognitionRef.current?.abort?.();
     setIsRecording(false);
     setVerify({}); setVerifyStage(''); setAiRules([]);
-    setResult(null); setDictResult(null); setErrorMsg(null); setCopied(false);
+    setResult(null); setDictResult(null); setQuickActive(false); setErrorMsg(null); setCopied(false);
     setMode('check'); setText(next.text);
     closeTemplates('input');
   }
@@ -313,7 +360,7 @@ export default function Home() {
       let final = '';
       for (let i = e.resultIndex; i < e.results.length; i++)
         if (e.results[i].isFinal) final += e.results[i][0].transcript;
-      if (final) setText(prev => (prev && !/\s$/.test(prev) ? prev + ' ' : prev) + final.trim());
+      if (final) { const current = inputRef.current?.value || ''; updateInput((current && !/\s$/.test(current) ? current + ' ' : current) + final.trim()); }
     };
     rec.onend = () => setIsRecording(false);
     rec.onerror = () => rec.stop();
@@ -369,6 +416,7 @@ export default function Home() {
   }
 
   const correction = result ? buildCorrection(result.originalText, result.errors) : null;
+  const quickErrors = quickActive ? findQuickErrors(text) : [];
 
   useEffect(() => {
     copySequenceRef.current++;
@@ -404,9 +452,10 @@ export default function Home() {
         <section className="check-speed-options" hidden={showTemplates} aria-label="검사 방식">
           <div role="group" aria-label="검사 속도 선택">
             <button type="button" aria-pressed={checkProfile==='fast'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('fast')}>빠른 검사</button>
+            <button type="button" aria-pressed={checkProfile==='full'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('full')}>전체 검사</button>
             <button type="button" aria-pressed={checkProfile==='thorough'} disabled={loading || ['local','nikl','web'].includes(verifyStage)} onClick={()=>setCheckProfile('thorough')}>자료 검색 포함</button>
           </div>
-          <p>{checkProfile==='fast'?'공식 자료 대조 포함, 실시간 웹 검색 생략. 근거가 부족하면 원문을 유지합니다.':'공식 자료와 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
+          <p>{checkProfile==='fast'?'기기에 저장된 규칙으로 검사합니다. 외부 API를 호출하지 않습니다.':checkProfile==='full'?'AI와 공식 자료를 활용해 문장 전체를 검사합니다.':'AI와 공식 자료, 웹 검색까지 추가로 확인합니다. 시간이 더 걸릴 수 있습니다.'}</p>
         </section>
         <div hidden={!showTemplates} className="phrase-panel">
           <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
@@ -435,7 +484,7 @@ export default function Home() {
               ref={inputRef}
               aria-label={mode === 'dict' ? '찾을 단어' : '검사할 글'}
               value={text}
-              onChange={e => setText(e.target.value)}
+              onChange={e => updateInput(e.target.value)}
               placeholder={mode === 'check'
                 ? "여기에 글을 입력하거나 붙여넣기 하세요.\n예) 오늘 날씨가 참 맑네요. 오랫만에 산책을 나갔습니다."
                 : "찾고 싶은 단어를 입력하세요.\n예) 설레다, 어이없다, 금세"}
@@ -451,7 +500,7 @@ export default function Home() {
             {isRecording && <span className="rec-status show">● 녹음 중...</span>}
           </div>
           <p style={{ margin: '12px 0', padding: '12px 14px', border: '1px solid #a56b35', borderRadius: 8, background: '#fff8e8', color: '#55300f', lineHeight: 1.6 }}>
-            입력한 글은 AI 맞춤법 검사를 위해 외부 AI 서비스로 전송됩니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
+            빠른 검사는 글을 외부로 보내지 않습니다. 전체 검사와 기존 사전 검색은 입력한 글을 외부 AI 서비스로 전송합니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
           </p>
           <div className="btn-row">
             <button
@@ -464,8 +513,29 @@ export default function Home() {
               onClick={() => { setMode('dict'); setResult(null); setDictResult(null); verifyRunRef.current++; setVerify({}); setVerifyStage(''); searchDictDirect(); }}
               disabled={loading}
             >📖 사전</button>
+            <button type="button" className={`btn-mode${showExpressionSearch ? ' active' : ''}`} aria-expanded={showExpressionSearch} aria-controls="expression-search" onClick={() => setShowExpressionSearch(value => !value)}>자주 헷갈리는 표현</button>
           </div>
         </div>
+
+        {showExpressionSearch && <section id="expression-search" className="expression-search" aria-labelledby="expression-title">
+          <h2 id="expression-title">자주 헷갈리는 표현</h2>
+          <p>검사할 글과 별도로 표현 자료를 검색합니다.</p>
+          <form onSubmit={searchExpressions}>
+            <label htmlFor="expression-query">찾을 표현</label>
+            <div className="expression-search-row"><input id="expression-query" value={expressionQuery} onChange={e => { expressionRunRef.current++; expressionControllerRef.current?.abort(); setExpressionQuery(e.target.value); setExpressionResults(null); setExpressionStatus(''); }} placeholder="예) 오랜만에" /><button type="submit">자료 검색</button></div>
+          </form>
+          {expressionStatus && <p role="status">{expressionStatus}</p>}
+          {expressionResults?.map((item, i) => <article className="expression-item" key={item.id ?? i}>
+            <h3>{item.correct}</h3>{item.wrong ? <p>헷갈리는 표현: {Array.isArray(item.wrong) ? item.wrong.join(', ') : item.wrong}</p> : <p>쓰임에 따라 구분하는 표현입니다.</p>}
+            <p>{item.explanation}</p>{item.example && <p>예) {item.example}</p>}
+            {item.sourceUrl && /^https?:\/\//i.test(item.sourceUrl) ? <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer">출처: {item.sourceName || item.sourceUrl}</a> : item.sourceName && <p>출처: {item.sourceName}</p>}
+          </article>)}
+        </section>}
+
+        {quickActive && mode === 'check' && <div className="result-card show quick-results" ref={resultRef} aria-live="polite">
+          <div className="score-banner"><div className="score-text"><h3>빠른 검사 {quickErrors.length}곳</h3><p>일부 표현만 찾는 검사입니다. 문장 전체의 정확성을 보장하지 않습니다.</p></div></div>
+          <div className="errors-sec">{quickErrors.length === 0 ? <p>빠른 검사에서 찾은 항목이 없어요. 문장 전체는 전체 검사에서 확인할 수 있어요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div><div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
+        </div>}
 
         {/* 로딩 */}
         {loading && (
@@ -511,8 +581,8 @@ export default function Home() {
                 AI의 공식 자료 대조 결과: 국립국어원 자료 {Object.values(verify).filter(v => v.source === 'nikl').length}개 발견 · 웹 자료 {Object.values(verify).filter(v => v.source === 'web').length}개 발견 · 근거 미확인 {Object.values(verify).filter(v => v.source === 'none').length}개 · 검증 응답 누락·실패 {Object.values(verify).filter(v => v.verificationFailed).length}개
               </div>
             )}
-            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='fast'?'빠른 검사':'자료 검색 포함'} 완료 · {(elapsedMs/1000).toFixed(1)}초{result.profile==='fast'?' · 실시간 웹 검색 생략':''}</p>}
-            {verifyStage==='done' && result.profile==='fast' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>더 많은 자료를 찾아 원문부터 다시 검사합니다. 직접 선택한 적용·유지 내용은 초기화되며 시간이 더 걸립니다.</p></div>}
+            {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'전체 검사':'자료 검색 포함'} 완료 · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
+            {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>더 많은 자료를 찾아 원문부터 다시 검사합니다. 직접 선택한 적용·유지 내용은 초기화되며 시간이 더 걸립니다.</p></div>}
             <div className="corrected-sec">
               <div className="sec-label">교정된 글</div>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
