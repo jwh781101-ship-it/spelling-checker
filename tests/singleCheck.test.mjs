@@ -212,3 +212,27 @@ test('다섯 규칙은 정확히 일치하는 국립국어원 자료만 표시�
   assert.equal(unsafe({wrong:'몇일',right:'며칠'}),undefined);
   assert.match(page,/href=\{err\.source\.sourceUrl\} target="_blank" rel="noopener noreferrer"/);
 });
+
+test('며칠의 잘못된 AI 어원 설명은 정확한 위치·표기 일치 시 안전한 설명과 공식 출처로 대체한다', () => {
+  const confRaw=readFileSync(new URL('../app/data/confusables.mjs',import.meta.url),'utf8');
+  const confusables=new Function(confRaw.replace('export const confusables','const confusables')+';return confusables')();
+  const quickRaw=readFileSync(new URL('../app/lib/quickCheck.mjs',import.meta.url),'utf8');
+  const findQuickErrors=new Function(quickRaw.replace('export const QUICK_RULES','const QUICK_RULES').replace('export function findQuickErrors','function findQuickErrors')+';return findQuickErrors')();
+  const lookupSource=section('function findQuickSource(', 'function countDuplicateQuickErrors(');
+  const findQuickSource=new Function('confusables',lookupSource+';return findQuickSource')(confusables);
+  const helper=section('function safeDisplayErrors(', 'export default function Home()');
+  const safe=new Function('findQuickErrors','findQuickSource',helper+';return safeDisplayErrors')(findQuickErrors,findQuickSource);
+  const original='오늘은 몇일인가요?';
+  const input={id:'a',start:4,end:6,wrong:'몇일',right:'며칠',explain:'몇과 일의 결합으로 발음이 변해 며칠입니다.',reason:'잘못된 AI 설명',status:'needs_review',manual:'keep'};
+  const out=safe(original,[input])[0];
+  assert.match(out.explain,/날짜나 기간/); assert.doesNotMatch(out.explain,/결합|발음/);
+  assert.equal(out.officialQuickSource.id,'myeochil'); assert.equal(out.status,'needs_review'); assert.equal(out.manual,'keep');
+  assert.match(input.explain,/결합/); assert.equal(input.officialQuickSource,undefined);
+  for (const change of [{start:0,end:2},{start:null,end:null},{wrong:'몇 일'},{right:'다른 표현'}]) {
+    const candidate={...input,...change}; assert.equal(safe(original,[candidate])[0],candidate);
+  }
+  assert.match(page,/errors=\{displayErrors\} verify=\{verify\}/);
+  assert.match(page,/: displayErrors\.map\(\(err, i\)/);
+  assert.match(page,/err\.officialQuickSource && verification \? \{\.\.\.verification, explain:undefined\}/);
+  assert.match(page,/이 링크는 별도 자료이며 AI 대조 완료를 뜻하지 않습니다/);
+});
