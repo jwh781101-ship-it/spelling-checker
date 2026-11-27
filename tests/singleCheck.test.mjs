@@ -233,6 +233,26 @@ test('며칠의 잘못된 AI 어원 설명은 정확한 위치·표기 일치 �
   }
   assert.match(page,/errors=\{displayErrors\} verify=\{verify\}/);
   assert.match(page,/: displayErrors\.map\(\(err, i\)/);
-  assert.match(page,/err\.officialQuickSource && verification \? \{\.\.\.verification, explain:undefined\}/);
+  assert.match(page,/verificationForDisplay\(verification, !!err\.officialQuickSource\)/);
   assert.match(page,/이 링크는 별도 자료이며 AI 대조 완료를 뜻하지 않습니다/);
+});
+
+
+test('공식 로컬 후보와 상충하는 AI 대조 판정은 불확실성 표시와 함께 설명을 보존한다', () => {
+  const source=section('function verificationForDisplay(', 'export default function Home()');
+  const display=new Function(source+';return verificationForDisplay')();
+  for(const verdict of ['둘다가능','AI교정틀림','부분']) {
+    const original={source:'nikl',verdict,explain:'대조 판단의 이유',verificationFailed:true};
+    const shown=display(original,true);
+    assert.equal(shown,original); assert.equal(shown.explain,'대조 판단의 이유'); assert.equal(shown.verificationFailed,true);
+  }
+  for(const verdict of ['일치','확인불가',undefined]) {
+    const original={source:'nikl',verdict,explain:'검증되지 않은 설명',verificationFailed:true};
+    const shown=display(original,true);
+    assert.equal(shown.explain,undefined); assert.equal(shown.verdict,verdict); assert.equal(shown.verificationFailed,true);
+    assert.equal(original.explain,'검증되지 않은 설명');
+  }
+  const unrelated={verdict:'일치',explain:'기존 AI 설명'};
+  assert.equal(display(unrelated,false),unrelated); assert.equal(display(null,true),null);
+  assert.ok(page.includes('AI 대조 설명 (판단이 틀릴 수 있음)'));
 });
