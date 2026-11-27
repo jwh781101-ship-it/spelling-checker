@@ -256,3 +256,28 @@ test('공식 로컬 후보와 상충하는 AI 대조 판정은 불확실성 표�
   assert.equal(display(unrelated,false),unrelated); assert.equal(display(null,true),null);
   assert.ok(page.includes('AI 대조 설명 (판단이 틀릴 수 있음)'));
 });
+
+test('자료 대조 중 새 검사 및 사전 호출을 막고 상충 판단을 두 화면에서 안내한다',()=>{
+ const busy="disabled={loading || ['local','nikl','web'].includes(verifyStage)}";
+ assert.equal(page.split(busy).length-1,2);
+ assert.match(page,/AI의 자료 대조 판단이 최초 제안과 다릅니다/);
+ const easy=readFileSync(new URL('../app/components/EasyReview.js',import.meta.url),'utf8');
+ assert.match(easy,/AI의 자료 대조 판단이 최초 제안과 다릅니다/);
+});
+
+test('공식 대조 실패는 웹 미발견과 구별하고 사전 출처를 명시한다',async()=>{
+  const source=section('  async function runVerify(', '  function chooseCorrection(');
+  const make=new Function(`
+    const state={calls:[]}, verifyRunRef={current:1}, retryBackupRef={current:null};
+    const fetchRules=async()=>{state.rulesCalled=true;return []}, contextOf=()=>'';
+    const verifyInBatches=async(stage,items)=>{state.calls.push(stage);return items.map(x=>({id:x.id,source:'none',verificationFailed:true}))};
+    const restorePreviousResult=()=>false, applyVerifiedEdits=(o,e)=>e, missingVerification=()=>({});
+    const setResult=()=>{}, setVerify=()=>{}, setVerifyStage=()=>{}, setAiRules=()=>{}, setElapsedMs=()=>{}, setErrorMsg=()=>{};
+    ${source}
+    return {state,runVerify};
+  `);
+  const h=make();await h.runVerify('글',{errors:[{id:'a',wrong:'글',right:'글자'}]},1,{profile:'thorough',signal:new AbortController().signal,startedAt:Date.now()});
+  assert.deepEqual(h.state.calls,['nikl']);assert.equal(h.state.rulesCalled,undefined);
+  assert.match(page,/AI가 작성한 뜻풀이이며 공식 사전을 실시간 조회한 결과가 아닙니다/);
+  assert.match(page,/앱에 저장된 부고 용어 설명/);
+});

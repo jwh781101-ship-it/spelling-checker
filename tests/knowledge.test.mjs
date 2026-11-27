@@ -46,3 +46,8 @@ test('이미지 특수문자를 빈칸으로 숨기지 않고 전사·미확인 
 });
 
 test('되다·뵈다 활용형도 해당 공식 용례를 우선 검색',()=>{for(const [wrong,right,id]of [['됬어요','됐어요','C035'],['뵈요','봬요','C036']]){const r=retrieveKnowledge(index,'저도 할수 있어요. 준비가 됬어요. 내일 뵈요.',{words:[wrong,right],maxCases:2});assert.ok(r.caseIds.includes(id));}});
+
+test('실제 인용문에 후보가 없으면 관련 조항이어도 자동 적용 근거로 삼지 않는다',()=>{
+ const no=normalizeVerification(item,yes,evidence);assert.equal(no.evidence.candidateMentioned,false);
+ const withCandidate=normalizeVerification(item,yes,{rule:{id:'M42'},ruleQuote:'할 수 있다'});assert.equal(withCandidate.evidence.candidateMentioned,true);
+});
