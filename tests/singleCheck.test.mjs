@@ -281,3 +281,15 @@ test('공식 대조 실패는 웹 미발견과 구별하고 사전 출처를 명
   assert.match(page,/AI가 작성한 뜻풀이이며 공식 사전을 실시간 조회한 결과가 아닙니다/);
   assert.match(page,/앱에 저장된 부고 용어 설명/);
 });
+
+test('표현 메뉴는 처음에 전체 목록을 보이고 검색 후 전체로 되돌릴 수 있다',()=>{
+ const sectionBody=section('        {showExpressionSearch && <section id="expression-search"','        <div hidden={showTemplates || showExpressionSearch}>');
+ assert.match(sectionBody,/전체 \{confusables\.length\}개 표현/);
+ assert.match(sectionBody,/\(expressionResults \?\? confusables\)\.map/);
+ assert.match(sectionBody,/<details className="expression-item"/);
+ assert.match(sectionBody,/전체 표현 다시 보기/);
+ assert.match(sectionBody,/setExpressionQuery\(''\); setExpressionResults\(null\)/);
+ const search=section('  async function searchExpressions(', '  function updateInput(');
+ assert.match(search,/if \(!q\) \{ setExpressionResults\(null\); setExpressionStatus\(''\); return; \}/);
+ assert.doesNotMatch(search,/callAI|checkSpellingDirect|setText/);
+});
