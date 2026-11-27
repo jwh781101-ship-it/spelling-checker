@@ -14,11 +14,12 @@ function ReviewItem({ error, index, count, original, errors, verify, verifyStage
   return <section className="er-review" aria-label={`수정 ${index + 1}/${count}`}>
     <h3 className="er-heading">수정 {index + 1}/{count}</h3>
     <p className="er-status" role="status">{state.label}</p>
-    {context && <p className="er-hint">현재 항목만 비교합니다. 전체 결과는 위 교정된 글에서 확인하세요.</p>}
+    {context && <p className="er-hint">현재 항목만 비교합니다. 전체 결과는 위 현재 반영된 글에서 확인하세요.</p>}
     {context ? <div className="er-comparison">
       <div className="er-line"><h4>원문</h4><ContextLine context={context} target={context.target} /></div>
       <div className="er-line"><h4>수정 제안</h4><ContextLine context={context} target={typeof error.right === 'string' ? error.right : ''} /></div>
     </div> : <p className="er-warning">해당 부분의 문맥을 표시할 수 없어요.</p>}
+    {['부분','AI교정틀림'].includes(verify?.[error.id]?.verdict) && <p className="er-warning" role="status">AI의 자료 대조 판단이 최초 제안과 다릅니다. 최초 제안: {error.right} · 대조 대안: {verify[error.id]?.officialRight || '확인 불가'}. 자동 적용하지 않았으니 자료와 문맥을 확인해 주세요.</p>}
     {issue && <p className="er-warning">{issue} 원문은 유지할 수 있어요.</p>}
     {state.uncertain && <p className="er-warning">자료 근거가 아직 확인되지 않았거나 대조 중이에요. 제안이 틀릴 수 있으니 직접 살펴봐 주세요.</p>}
     {(error.explain || error.reason) && <p className="er-reason"><strong>이유: </strong>{error.explain || error.reason}</p>}

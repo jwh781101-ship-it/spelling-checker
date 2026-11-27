@@ -104,5 +104,9 @@ export function normalizeVerification(item, proposal, {sources = [], rule = null
   else if(verdict==='일치')official=item.right;
   else if(!Object.hasOwn(proposal||{},'officialRight') || official.length>150 || /[\n\r]|\s또는\s|\s\/\s/.test(official)) {verdict='확인불가';official=item.wrong;}
   const finalFound=found&&verdict!=='확인불가';
-  return {id:item.id,source:finalFound?'nikl':'none',found:finalFound,verdict:finalFound?verdict:'확인불가',officialRight:finalFound?official:item.wrong,explain:String(proposal?.explain||'').slice(0,650),rule:validRule?rule:null,ruleQuote:validRule?ruleQuote:'',sources:[...sources,...localSources].slice(0,3),evidence:{ruleQuoteMatched:validRule,searchUrlsMatched:sources.length,localCaseSources:localSources.length},requiresReview:!finalFound};
+  // 인용의 존재만으로 문맥 적용을 증명할 수는 없지만, 교정 표현조차 등장하지 않는 자료는 자동 적용 근거로 쓰지 않습니다.
+  const candidates=[item.wrong,item.right].filter(x=>typeof x==='string' && x.trim().length>=2).map(x=>x.normalize('NFC').replace(/\s+/gu,' ').trim());
+  const cited=[validRule?ruleQuote:'',...sources.map(s=>s.quote||''),...localSources.map(s=>s.quote||'')].map(x=>String(x||'').normalize('NFC').replace(/\s+/gu,' '));
+  const candidateMentioned=candidates.some(term=>cited.some(text=>text.includes(term)));
+  return {id:item.id,source:finalFound?'nikl':'none',found:finalFound,verdict:finalFound?verdict:'확인불가',officialRight:finalFound?official:item.wrong,explain:String(proposal?.explain||'').slice(0,650),rule:validRule?rule:null,ruleQuote:validRule?ruleQuote:'',sources:[...sources,...localSources].slice(0,3),evidence:{ruleQuoteMatched:validRule,searchUrlsMatched:sources.length,localCaseSources:localSources.length,candidateMentioned},requiresReview:!finalFound};
 }
