@@ -25,7 +25,7 @@ export function EnvelopeGuide() {
   const longestColumn = Math.max(Array.from(name).length, showAffiliation ? Array.from(affiliation).length : 0, 1);
   const backFontSize = Math.min(1.15, 9 / longestColumn) + 'rem';
   const description = side === 'front'
-    ? selected.label + ' 봉투 앞면: 가운데에 ' + selected.hanja + ', 한글로는 ' + selected.korean + '이라고 씁니다.'
+    ? selected.label + ' 봉투 앞면: 가운데에 ' + selected.hanja + ', 한글 표기는 ' + selected.korean + '입니다.'
     : '봉투 뒷면: 바라보는 기준 왼쪽 아래에 이름 ' + (name || '(이름 없음)') + (showAffiliation ? ', 이름 오른쪽에 ' + affiliation : '') + '.';
 
   return (

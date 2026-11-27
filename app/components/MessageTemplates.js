@@ -109,7 +109,7 @@ export default function MessageTemplates({ onUse, onClose, onFindDictionary }) {
       <div hidden={tab !== 'write'}>
         <div className="mt-categories" role="group" aria-label="문구 범주">
           {categories.map((category) => <button type="button" className="mt-category" aria-pressed={categoryId === category.id} key={category.id} onClick={() => requestAction({kind:'category', value:category.id})}>
-            {category.id === 'bereavement-comfort' ? '부고 받은 사람에게 위로' : category.id === 'funeral-gratitude' ? '장례 마친 사람이 감사' : category.label}
+            {category.id === 'bereavement-comfort' ? '부고 받고 보내는 위로' : category.id === 'funeral-gratitude' ? '장례 마친 사람이 감사' : category.label}
           </button>)}
         </div>
         <div className="mt-length" role="group" aria-label="문구 길이">
@@ -117,7 +117,7 @@ export default function MessageTemplates({ onUse, onClose, onFindDictionary }) {
         </div>
         <div className="mt-list" aria-label="문구 목록">
           {filterTemplates(categoryId, length).map((template) => <article className="mt-card" key={template.id}>
-            <h3>{template.label}{template.tone === 'friend' ? ' · 친구에게' : template.tone === 'formal' ? ' · 존댓말' : ''}</h3><p className="mt-preview">{template.body}</p>
+            <h3>{template.label}{template.tone === 'friend' && !template.label.includes('친구') ? ' · 친구에게' : template.tone === 'formal' ? ' · 존댓말' : ''}</h3><p className="mt-preview">{template.body}</p>
             {template.note && <p className="mt-note">{template.note}</p>}
             <button type="button" className="mt-button" aria-pressed={selected?.id === template.id} onClick={() => requestAction({kind:'template',template})} aria-label={`${template.label} 문구 선택`}>{selected?.id === template.id ? '선택됨' : '선택'}</button>
           </article>)}
