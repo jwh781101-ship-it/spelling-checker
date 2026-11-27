@@ -8,6 +8,12 @@ export const categories = [
   { id: 'condolence', label: '조문·위로' },
   { id: 'celebration-thanks', label: '축하 감사' },
   { id: 'condolence-thanks', label: '조문 감사' },
+  { id: 'wedding-attend', label: '청첩장 받고 참석' },
+  { id: 'wedding-decline', label: '청첩장 받고 불참' },
+  { id: 'bereavement-comfort', label: '부고 받고 위로' },
+  { id: 'bereavement-unable', label: '부고 받고 직접 조문 어려움' },
+  { id: 'wedding-gratitude', label: '결혼식 마치고 감사' },
+  { id: 'funeral-gratitude', label: '장례 마치고 감사' },
 ];
 
 export const templates = [
@@ -35,8 +41,44 @@ export const templates = [
   { id: 'condolence-thanks-short', categoryId: 'condolence-thanks', label: '짧게', body: '위로의 마음을 전해주셔서 진심으로 감사드립니다.' },
   { id: 'condolence-thanks-formal', categoryId: 'condolence-thanks', label: '정중하게', body: '슬픔을 함께해 주시고 따뜻한 위로를 전해주셔서 깊이 감사드립니다.' },
   { id: 'condolence-thanks-visit', categoryId: 'condolence-thanks', label: '조문 답례', body: '바쁘신 가운데 조문해 주시고 위로해 주셔서 진심으로 감사드립니다.', note: '직접 조문한 분께 전할 때 사용하세요.' },
+  {"id":"wedding-long-careful","categoryId":"wedding","label":"정성스럽게","body":"결혼을 진심으로 축하드립니다. 서로를 아끼며 함께하실 두 분의 앞날을 응원합니다. 기쁜 날의 설렘이 오래도록 이어지기를 바랍니다.","length":"long","tone":"formal"},
+  {"id":"birth-long-careful","categoryId":"birth","label":"정성스럽게","body":"소중한 아기의 탄생을 진심으로 축하드립니다. 새로운 가족과 함께하는 하루하루에 따뜻한 순간이 가득하시기를 바랍니다. 가족 모두 건강하고 평안하게 지내시길 응원합니다.","length":"long","tone":"formal"},
+  {"id":"birthday-long-careful","categoryId":"birthday","label":"정성스럽게","body":"생일을 진심으로 축하드립니다. 오늘 하루 소중한 분들과 따뜻하고 즐거운 시간을 보내시길 바랍니다. 다가오는 날들에도 웃을 일이 가득하시기를 바랍니다.","length":"long","tone":"formal"},
+  {"id":"promotion-long-careful","categoryId":"promotion","label":"정성스럽게","body":"새로운 자리를 맡게 되신 것을 진심으로 축하드립니다. 그동안 쌓아 오신 노력의 결실이라 더욱 뜻깊게 느껴집니다. 앞으로 펼쳐질 새로운 걸음도 응원하겠습니다.","length":"long","tone":"formal"},
+  {"id":"opening-long-careful","categoryId":"opening","label":"정성스럽게","body":"새로운 공간에서 시작하시는 일을 진심으로 축하드립니다. 오랜 준비와 정성을 담으신 만큼 기쁜 일들이 많이 찾아오기를 바랍니다. 앞으로의 걸음도 마음을 다해 응원하겠습니다.","length":"long","tone":"formal"},
+  {"id":"condolence-long-careful","categoryId":"condolence","label":"정성스럽게","body":"갑작스러운 소식에 마음이 무겁습니다. 깊은 슬픔을 겪고 계실 유가족분들께 진심으로 위로를 전합니다. 고인을 향한 애도의 마음을 함께하겠습니다.","length":"long","tone":"neutral"},
+  {"id":"celebration-thanks-long-careful","categoryId":"celebration-thanks","label":"정성스럽게","body":"기쁜 날에 따뜻한 축하를 보내주셔서 진심으로 감사합니다. 전해주신 마음 덕분에 더욱 뜻깊고 행복한 시간을 보냈습니다. 보내주신 응원을 오래도록 소중히 간직하겠습니다.","length":"long","tone":"formal"},
+  {"id":"condolence-thanks-long-careful","categoryId":"condolence-thanks","label":"정성스럽게","body":"슬픔의 시간에 따뜻한 위로를 보내주셔서 진심으로 감사드립니다. 전해주신 마음이 저희 가족에게 큰 힘이 되었습니다. 보내주신 정성을 오래도록 잊지 않겠습니다.","length":"long","tone":"formal"},
+  {"id":"wedding-attend-long-friend","categoryId":"wedding-attend","label":"친구에게 정성스럽게","body":"청첩장 보내줘서 고마워. 두 사람의 결혼을 진심으로 축하해. 기쁜 날 꼭 참석해서 함께 축하할게.","length":"long","tone":"friend"},
+  {"id":"wedding-attend-long-formal","categoryId":"wedding-attend","label":"정중하게 정성스럽게","body":"청첩장을 보내주셔서 감사합니다. 두 분의 결혼을 진심으로 축하드립니다. 기쁜 날 참석하여 함께 축하드리겠습니다.","length":"long","tone":"formal"},
+  {"id":"wedding-attend-short-friend","categoryId":"wedding-attend","label":"친구에게 짧게","body":"청첩장 고마워. 결혼식에 꼭 가서 축하할게!","length":"short","tone":"friend"},
+  {"id":"wedding-attend-short-formal","categoryId":"wedding-attend","label":"정중하게 짧게","body":"청첩장 감사합니다. 결혼식에 참석하여 축하드리겠습니다.","length":"short","tone":"formal"},
+  {"id":"wedding-decline-long-friend","categoryId":"wedding-decline","label":"친구에게 정성스럽게","body":"청첩장 보내줘서 고마워. 결혼을 진심으로 축하하는데, 그날 사정이 생겨 참석하지 못하게 됐어. 직접 축하하지 못해 미안하고, 두 사람의 앞날을 진심으로 응원할게.","length":"long","tone":"friend"},
+  {"id":"wedding-decline-long-formal","categoryId":"wedding-decline","label":"정중하게 정성스럽게","body":"청첩장을 보내주셔서 감사합니다. 두 분의 결혼을 진심으로 축하드리지만, 부득이한 사정으로 참석하지 못하게 되었습니다. 직접 축하드리지 못해 죄송하며 두 분의 앞날에 행복이 가득하시길 바랍니다.","length":"long","tone":"formal"},
+  {"id":"wedding-decline-short-friend","categoryId":"wedding-decline","label":"친구에게 짧게","body":"결혼 정말 축하해. 사정이 생겨 참석하지 못해 미안해.","length":"short","tone":"friend"},
+  {"id":"wedding-decline-short-formal","categoryId":"wedding-decline","label":"정중하게 짧게","body":"결혼을 진심으로 축하드립니다. 부득이한 사정으로 참석하지 못해 죄송합니다.","length":"short","tone":"formal"},
+  {"id":"bereavement-comfort-long-friend","categoryId":"bereavement-comfort","label":"친구에게 정성스럽게","body":"소식을 듣고 마음이 많이 무거웠어. 얼마나 힘들지 다 헤아릴 수 없지만 깊은 위로를 전해. 고인을 기억하며 함께 애도할게.","length":"long","tone":"friend"},
+  {"id":"bereavement-comfort-long-formal","categoryId":"bereavement-comfort","label":"정중하게 정성스럽게","body":"부고를 듣고 마음이 무거웠습니다. 깊은 슬픔을 겪고 계실 가족분들께 진심으로 위로를 전합니다. 고인을 기억하며 애도의 마음을 함께하겠습니다.","length":"long","tone":"formal"},
+  {"id":"bereavement-comfort-short-friend","categoryId":"bereavement-comfort","label":"친구에게 짧게","body":"소식을 듣고 마음이 무거워. 깊은 위로와 애도의 마음을 전해.","length":"short","tone":"friend"},
+  {"id":"bereavement-comfort-short-formal","categoryId":"bereavement-comfort","label":"정중하게 짧게","body":"부고를 듣고 깊은 위로를 전합니다. 고인을 향한 애도의 마음을 함께하겠습니다.","length":"short","tone":"formal"},
+  {"id":"bereavement-unable-long-friend","categoryId":"bereavement-unable","label":"친구에게 정성스럽게","body":"소식을 듣고 마음이 무거웠어. 사정이 있어 직접 조문하러 가지 못해 미안해. 멀리서나마 고인을 기억하며 깊은 애도의 마음을 전할게.","length":"long","tone":"friend"},
+  {"id":"bereavement-unable-long-formal","categoryId":"bereavement-unable","label":"정중하게 정성스럽게","body":"부고를 듣고 깊은 슬픔을 함께합니다. 부득이한 사정으로 직접 찾아뵙고 조문하지 못해 죄송합니다. 고인을 향한 애도와 유가족분들께 위로의 마음을 전합니다.","length":"long","tone":"formal"},
+  {"id":"bereavement-unable-short-friend","categoryId":"bereavement-unable","label":"친구에게 짧게","body":"직접 조문하러 가지 못해 미안해. 고인을 생각하며 깊은 애도의 마음을 전해.","length":"short","tone":"friend"},
+  {"id":"bereavement-unable-short-formal","categoryId":"bereavement-unable","label":"정중하게 짧게","body":"직접 찾아뵙고 조문하지 못해 죄송합니다. 깊은 애도와 위로의 마음을 전합니다.","length":"short","tone":"formal"},
+  {"id":"wedding-gratitude-long-friend","categoryId":"wedding-gratitude","label":"친구에게 정성스럽게","body":"결혼식에 와서 함께 축하해 줘서 정말 고마워. 네가 함께해 줘서 그날이 더욱 특별하고 든든했어. 보내준 따뜻한 마음 오래 기억하며 잘 살아갈게.","length":"long","tone":"friend"},
+  {"id":"wedding-gratitude-long-formal","categoryId":"wedding-gratitude","label":"정중하게 정성스럽게","body":"바쁘신 가운데 결혼식에 참석하시어 축하해 주셔서 진심으로 감사드립니다. 보내주신 따뜻한 마음 덕분에 뜻깊은 날을 잘 마쳤습니다. 베풀어 주신 정성을 오래 기억하며 행복하게 살아가겠습니다.","length":"long","tone":"formal"},
+  {"id":"wedding-gratitude-short-friend","categoryId":"wedding-gratitude","label":"친구에게 짧게","body":"결혼식에 와서 축하해 줘서 정말 고마워. 덕분에 행복한 하루였어.","length":"short","tone":"friend"},
+  {"id":"wedding-gratitude-short-formal","categoryId":"wedding-gratitude","label":"정중하게 짧게","body":"결혼식에 참석해 축하해 주셔서 진심으로 감사드립니다. 보내주신 마음을 소중히 간직하겠습니다.","length":"short","tone":"formal"},
+  {"id":"funeral-gratitude-long-friend","categoryId":"funeral-gratitude","label":"친구에게 정성스럽게","body":"장례를 치르는 동안 곁에서 위로해 줘서 정말 고마워. 힘든 시간에 네가 보내준 마음이 큰 힘이 됐어. 그 따뜻한 마음 오래도록 잊지 않을게.","length":"long","tone":"friend"},
+  {"id":"funeral-gratitude-long-formal","categoryId":"funeral-gratitude","label":"정중하게 정성스럽게","body":"장례를 치르는 동안 따뜻한 위로를 보내주셔서 진심으로 감사드립니다. 덕분에 큰 슬픔 속에서도 힘을 내어 장례를 잘 마칠 수 있었습니다. 보내주신 마음을 오래도록 소중히 간직하겠습니다.","length":"long","tone":"formal"},
+  {"id":"funeral-gratitude-short-friend","categoryId":"funeral-gratitude","label":"친구에게 짧게","body":"장례를 치르는 동안 위로해 줘서 정말 고마워. 네 마음이 큰 힘이 됐어.","length":"short","tone":"friend"},
+  {"id":"funeral-gratitude-short-formal","categoryId":"funeral-gratitude","label":"정중하게 짧게","body":"장례 중 따뜻한 위로를 보내주셔서 진심으로 감사드립니다. 덕분에 큰 힘을 얻었습니다.","length":"short","tone":"formal"},
 ];
 
-export function filterTemplates(categoryId) {
-  return categoryId ? templates.filter((item) => item.categoryId === categoryId) : templates;
+export function filterTemplates(categoryId, length) {
+  if (!categoryId && !length) return templates;
+  return templates.filter((item) =>
+    (!categoryId || item.categoryId === categoryId) &&
+    (!length || (item.length || 'short') === length)
+  );
 }
