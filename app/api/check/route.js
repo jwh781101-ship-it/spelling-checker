@@ -17,7 +17,7 @@ export async function POST(request) {
     if(text.length>limit)return Response.json({error:`한 번에 ${limit}자까지 검사할 수 있습니다. 글을 나누어 주세요.`},{status:400});
     if(mode==='dict'){
       const entry=getFuneralDictionaryEntry(text);
-      if(entry)return Response.json({text:JSON.stringify(entry),stop:'end_turn'});
+      if(entry)return Response.json({text:JSON.stringify({...entry,sourceType:'local'}),stop:'end_turn'});
     }
     if(!process.env.ANTHROPIC_API_KEY)return Response.json({error:'AI 서비스 설정을 확인해 주세요.'},{status:503});
     const before=typeof contextBefore==='string'?contextBefore.slice(-300):'';
@@ -33,7 +33,7 @@ export async function POST(request) {
     if(!response.ok||data.error)return Response.json({error:'AI 서비스가 응답하지 못했습니다. 잠시 후 다시 시도해 주세요.'},{status:502});
     if(data.stop_reason==='max_tokens')return Response.json({error:'검사 결과가 너무 길었습니다. 글을 더 짧게 나누어 다시 검사해 주세요.'},{status:502});
     const parsed=parseModelJSON((data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''));
-    if(mode==='dict')return Response.json({text:JSON.stringify(parsed),stop:data.stop_reason});
+    if(mode==='dict')return Response.json({text:JSON.stringify({...parsed,sourceType:'ai'}),stop:data.stop_reason});
     if(!Array.isArray(parsed.errors))return Response.json({error:'검사 결과 형식을 확인하지 못했습니다. 원문은 바꾸지 않았습니다.'},{status:502});
     const candidates=(Array.isArray(parsed.errors)?parsed.errors:[]).slice(0,30).filter(e=>e&&e.confidence==='high'&&typeof e.wrong==='string'&&e.wrong.length<=120&&typeof e.right==='string'&&e.right.length<=150).map(e=>({wrong:e.wrong,right:e.right,start:e.start,end:e.end,anchorBefore:typeof e.anchorBefore==='string'?e.anchorBefore.slice(-40):'',anchorAfter:typeof e.anchorAfter==='string'?e.anchorAfter.slice(0,40):'',type:String(e.type||'맞춤법').slice(0,20),explain:String(e.explain||'').slice(0,500),rule:knowledge.ruleIds.includes(e.rule)?e.rule:'',context:String(e.context||'').slice(0,600),confidence:'high',status:'pending'}));
     const errors=anchorEdits(text,candidates);
