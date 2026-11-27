@@ -646,7 +646,7 @@ export default function Home() {
             {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'AI 검사와 자료 대조 종료':'자료 검색 포함 검사 종료'} · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
             {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문을 AI에 다시 보내고 웹 자료도 찾습니다. API 이용 비용이 추가로 발생할 수 있고 시간이 더 걸립니다. 직접 선택한 적용·유지 내용은 초기화됩니다.</p></div>}
             <div className="corrected-sec">
-              <div className="sec-label">교정된 글</div>
+              <div className="sec-label">현재 반영된 글</div><p>자동 반영되지 않은 제안은 원문으로 남아 있습니다. 복사 전에 수정 내역을 확인해 주세요.</p>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
             </div>
             {result.errors?.length > 0 && (
@@ -691,7 +691,7 @@ export default function Home() {
             )}
             <div className="copy-row">
               <button className={`btn-copy${copied === correction.text ? ' copied' : ''}`} onClick={copyText}>
-                {copied === correction.text ? '✅ 복사되었습니다!' : '📋 교정된 글 복사하기'}
+                {copied === correction.text ? '✅ 복사되었습니다!' : '📋 현재 글 복사하기'}
               </button>
               {canShare && (
                 <button className="btn-share" onClick={shareText}>💬 카톡·문자로 보내기</button>
