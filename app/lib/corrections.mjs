@@ -21,6 +21,8 @@ export function anchorEdits(original, candidates = []) {
     }
     e.start = start < 0 ? null : start;
     e.end = start < 0 ? null : start + e.wrong.length;
+    // 위치가 확정된 동일 후보만 합친다. 위치 미확정이나 다른 제안은 보류 대상으로 남긴다.
+    if (start >= 0 && errors.some(existing => existing.start === e.start && existing.end === e.end && existing.wrong === e.wrong && existing.right === e.right)) continue;
     // 다음 처리 단계에는 AI가 쓴 단서가 아니라 확인된 원문의 단서를 전달합니다.
     if (start >= 0) {
       e.anchorBefore = original.slice(Math.max(0, start - 20), start);
