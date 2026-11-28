@@ -389,14 +389,18 @@ export default function Home() {
   function updateInput(value) {
     retryBackupRef.current=null;
     requestControllerRef.current?.abort(); verifyRunRef.current++;
-    setLoading(false); setProgress(''); setVerifyStage(''); setResult(null); setDictResult(null); setErrorMsg(null);
+    const hadResult = Boolean(result || dictResult);
+    const wasRunning = loading || ['local','nikl','web'].includes(verifyStage);
+    setLoading(false); setProgress(''); setVerifyStage(''); setResult(null); setDictResult(null);
+    setErrorMsg(wasRunning ? {text:(hadResult ? '글을 바꿔 이전 결과를 지우고 진행 중인 검사를 중단했습니다. ' : '글을 바꿔 진행 중인 검사를 중단했습니다. ') + '이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'} : hadResult ? {text:'글을 바꿔 이전 결과를 지웠습니다.'} : null);
     setText(value);
   }
 
   function applyQuick(error) {
     if (!Number.isInteger(error.start) || !Number.isInteger(error.end) || error.start < 0 || error.end <= error.start || text.slice(error.start,error.end) !== error.wrong) return;
+    const wasRunning = loading || ['local','nikl','web'].includes(verifyStage);
     updateInput(text.slice(0,error.start) + error.right + text.slice(error.end));
-    setErrorMsg({text:'글을 바꾸어 이전 검사 결과를 지웠습니다. 진행 중이었다면 검사를 중단했지만 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다. 맞춤법 검사를 다시 눌러 주세요.'});
+    setErrorMsg({text:wasRunning ? (result ? '글을 바꿔 이전 결과를 지우고 진행 중인 검사를 중단했습니다. ' : '글을 바꿔 진행 중인 검사를 중단했습니다. ') + '이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.' : result ? '글을 바꿔 이전 검사 결과를 지웠습니다.' : '글을 바꿨습니다.'});
   }
 
   function requestQuick(error, trigger) {
@@ -606,7 +610,7 @@ export default function Home() {
         </div>}
         {(showTemplates || showExpressionSearch) && !loading && errorMsg && <div className="notice-card" role="alert"><p>{errorMsg.text}</p><button type="button" className="check-cancel" onClick={closeTemplates}>글 검사로 돌아가기</button></div>}
         <div hidden={!showTemplates} className="phrase-panel">
-          <p className="phrase-panel-note">예문을 고르고 편집·복사할 때는 AI를 호출하지 않습니다. 검사창에 넣어도 검사가 자동으로 시작되지는 않습니다.</p>
+          <p className="phrase-panel-note">예문은 AI 없이 이용합니다. 검사는 직접 시작하며, 외부 AI로 전송됩니다. 개인정보·민감정보는 입력하지 마세요.</p>
           {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
             <h3>입력해 둔 글이 있습니다</h3>
             <p>선택한 문구를 어떻게 넣을까요? 글을 바꾸거나 붙이면 이전 검사 결과는 초기화됩니다.</p>
@@ -665,7 +669,7 @@ export default function Home() {
             {isRecording && <span className="rec-status show">● 녹음 중...</span>}
           </div>
           <p style={{ margin: '12px 0', padding: '12px 14px', border: '1px solid #a56b35', borderRadius: 8, background: '#fff8e8', color: '#55300f', lineHeight: 1.6 }}>
-            맞춤법 검사와 사전 검색은 입력한 글을 외부 AI 서비스로 전송하며 API 이용 비용이 발생할 수 있습니다. 검사는 시간이 걸릴 수 있습니다. 개인정보·민감정보는 입력하지 마세요. 결과가 틀릴 수 있으니 확인해 주세요.
+            입력한 글은 외부 AI 서비스로 전송됩니다. 개인정보·민감정보는 입력하지 마세요.
           </p>
           <div className="btn-row">
             <button
@@ -753,8 +757,8 @@ export default function Home() {
             )}
             {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'AI 검사와 자료 대조 종료':'자료 검색 포함 검사 종료'} · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
             {verifyStage==='cancelled' && <div className="check-more" role="status"><p>자료 대조가 취소되어 완료되지 않았습니다. 현재 결과와 직접 선택한 내용은 유지됩니다. 미확인 제안만 추가 검색하거나 원문 전체를 다시 검사할 수 있습니다.</p></div>}
-            {['done','cancelled'].includes(verifyStage) && pendingEvidence.length > 0 && <div className="check-more"><button type="button" onClick={searchUnresolvedEvidence}>확인이 필요한 {pendingEvidence.length}곳만 추가 검색</button><p>이미 찾은 AI 제안만 다시 자료와 대조합니다. 원문 전체를 다시 검사하지 않으며, 기존 선택은 유지합니다. 위치가 불명확하거나 겹친 항목과 직접 선택한 항목은 검색하지 않습니다. 추가 AI 비용과 시간이 들 수 있습니다.</p></div>}
-            {(['done','cancelled'].includes(verifyStage) && (result.profile==='full' || verifyStage==='cancelled')) && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문을 AI에 다시 보내고 웹 자료도 찾습니다. API 이용 비용이 추가로 발생할 수 있고 시간이 더 걸립니다. 직접 선택한 적용·유지 내용은 초기화됩니다. 재검사를 취소하거나 실패하면 이전 결과와 선택이 복원됩니다.</p></div>}
+            {['done','cancelled'].includes(verifyStage) && pendingEvidence.length > 0 && <div className="check-more"><button type="button" onClick={searchUnresolvedEvidence}>확인이 필요한 {pendingEvidence.length}곳만 추가 검색</button><p>이미 찾은 AI 제안만 다시 자료와 대조합니다. 원문 전체를 다시 검사하지 않으며, 기존 선택은 유지합니다. 위치가 불명확하거나 겹친 항목과 직접 선택한 항목은 검색하지 않습니다. 시간이 더 걸릴 수 있습니다.</p></div>}
+            {(['done','cancelled'].includes(verifyStage) && (result.profile==='full' || verifyStage==='cancelled')) && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문 전체를 외부 AI 서비스에 다시 보내고 웹 자료도 찾습니다. 시간이 더 걸릴 수 있습니다. 직접 선택한 적용·유지 내용은 초기화됩니다. 재검사를 취소하거나 실패하면 이전 결과와 선택이 복원됩니다.</p></div>}
             <div className="corrected-sec" id="result-applied" tabIndex={-1}>
               <div className="sec-label">현재 반영된 글</div><p>자동 반영되지 않은 제안은 원문으로 남아 있습니다. 복사 전에 수정 내역을 확인해 주세요.</p>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
@@ -865,11 +869,8 @@ export default function Home() {
         {/* 저장 목록 */}
         <div className="saved-card">
           <div className="saved-head">
-            <div>
-              <div className="saved-head-title">⭐ 저장한 오류</div>
-              <div className="saved-count">{saved.length}개</div>
-            </div>
-            <button className="btn-clear-all" onClick={clearAllSaved}>전체 삭제</button>
+            <div className="saved-head-title">⭐ 저장한 오류 <span className="saved-count">{saved.length}개</span></div>
+            {saved.length > 0 && <button className="btn-clear-all" onClick={clearAllSaved}>전체 삭제</button>}
           </div>
           <div className="saved-list">
             {saved.length === 0 ? (
@@ -904,7 +905,7 @@ export default function Home() {
               <span><b>{t.wrong} → {t.right}</b> &nbsp;{t.desc}</span>
             </div>
           ))}
-          <p className="tips-src">출처: 국립국어원 한글 맞춤법(문화체육관광부 고시 제2017-12호)·표준어 규정·표준국어대사전</p>
+          <p className="tips-src">출처: 국립국어원 한글 맞춤법 (문화체육관광부 고시 제2017-12호) · 표준어 규정 · 표준국어대사전</p>
         </div>
         </div>
       </main>

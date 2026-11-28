@@ -9,7 +9,7 @@ function harness(initial, previous = null) {
   const input = section('  function updateInput(', '  async function checkSpelling()');
   const make = new Function('initial', 'previous', `
     let text=initial; let state={}; const verifyRunRef={current:0}, requestControllerRef={current:null}, resultRef={current:{scrollIntoView:()=>state.scrolled=true}}, retryBackupRef={current:null};
-    const result=previous, verify={a:{source:'nikl'}}, verifyStage='done', aiRules=['rule'], elapsedMs=42;
+    const result=previous, verify={a:{source:'nikl'}}, aiRules=['rule'], elapsedMs=42; let verifyStage='done', loading=false, dictResult=null;
     let resolveAI, rejectAI; const pending=new Promise((r,j)=>{resolveAI=r;rejectAI=j});
     const callAI=(...args)=>{state.call=args; return pending};
     const splitTextWithContext=t=>[{text:t,start:0}];
@@ -19,8 +19,8 @@ function harness(initial, previous = null) {
     const runVerify=(t,p,id,o)=>{state.verification=o};
     const setTimeout=fn=>{(state.timers ||= []).push(fn)};
     const setErrorMsg=v=>state.error=v, setQuickActive=v=>state.quick=v, setElapsedMs=v=>state.elapsed=v,
-      setVerify=v=>state.verify=v, setVerifyStage=v=>state.stage=v, setAiRules=v=>state.rules=v,
-      setLoading=v=>state.loading=v, setResult=v=>state.result=v, setDictResult=v=>state.dict=v,
+      setVerify=v=>state.verify=v, setVerifyStage=v=>{verifyStage=v;state.stage=v}, setAiRules=v=>state.rules=v,
+      setLoading=v=>{loading=v;state.loading=v}, setResult=v=>state.result=v, setDictResult=v=>{dictResult=v;state.dict=v},
       setProgress=v=>state.progress=v, setText=v=>{text=v;state.text=v};
     const friendlyError=()=> 'failed';
     __HELPERS__
@@ -39,7 +39,7 @@ test('로컬 후보가 없어도 즉시 fast AI 검사와 공식자료 대조를
 test('후보 적용은 요청 abort 및 세대 무효화 후 늦은 응답을 버린다', async () => {
   const h=harness('몇일'); const done=h.checkSpellingDirect(); const signal=h.state.call[4].signal;
   h.applyQuick({start:0,end:2,wrong:'몇일',right:'며칠'});
-  assert.equal(signal.aborted,true); assert.equal(h.state.text,'며칠'); assert.match(h.state.error.text,/다시 눌러/);
+  assert.equal(signal.aborted,true); assert.equal(h.state.text,'며칠'); assert.match(h.state.error.text,/이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다/);
   h.resolveAI({errors:[{wrong:'몇일',right:'며칠'}]}); await done;
   assert.equal(h.state.result,null); assert.equal(h.state.verification,undefined);
 });

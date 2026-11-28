@@ -83,7 +83,7 @@ test('추가 검색 중 취소는 늦은 응답을 버리고 검색 중 수동 �
 test('빠른 교정은 기존 결과가 있을 때 확인 후에만 바꾸며 확인 시 위치를 재검증한다', () => {
   const src=page.slice(page.indexOf('  function applyQuick('),page.indexOf('  async function checkSpelling()'));
   const make=new Function(`
-    let text='몇일', result={errors:[{manual:'keep'}]}, pendingQuick=null, changed=false, error=null;
+    let text='몇일', result={errors:[{manual:'keep'}]}, pendingQuick=null, changed=false, error=null, loading=false, verifyStage='done';
     const retryBackupRef={current:null}, quickTriggerRef={current:null};
     const setPendingQuick=v=>pendingQuick=v, setErrorMsg=v=>error=v, updateInput=v=>{text=v;changed=true;result=null};
     __SOURCE__
