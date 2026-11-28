@@ -60,3 +60,19 @@ test('청크 위치를 전역 위치로 옮겨도 확정한 단서를 보존한�
  const [global]=a(original,[{...e,start:e.start+6,end:e.end+6}]);
  assert.equal(global.start,6);assert.equal(global.status,'pending');
 });
+
+test('위치 확정 후 동일 원문과 제안만 중복 제거하고 첫 항목을 보존한다',()=>{
+ const es=a('앞 역활 뒤',[{wrong:'역활',right:'역할',start:2,end:4,explain:'첫 설명'}, {wrong:'역활',right:'역할',start:99,end:101,explain:'둘째 설명'}]);
+ assert.equal(es.length,1);assert.equal(es[0].explain,'첫 설명');assert.equal(es[0].start,2);assert.equal(es[0].overlap,undefined);
+ assert.equal(b('앞 역활 뒤',es.map(e=>({...e,status:'applied'}))).text,'앞 역할 뒤');
+});
+test('같은 위치의 다른 제안과 부분 중첩은 제거하지 않고 모두 보류한다',()=>{
+ for(const [text,candidates] of [
+  ['역활',[{wrong:'역활',right:'역할'},{wrong:'역활',right:'구실'}]],
+  ['가나다',[{wrong:'가나',right:'x'},{wrong:'나다',right:'y'}]],
+ ]) {const es=a(text,candidates);assert.equal(es.length,2);assert.ok(es.every(e=>e.overlap&&e.status==='needs_review'));assert.equal(b(text,es.map(e=>({...e,manual:'apply'}))).text,text);}
+});
+test('반복 원문의 서로 다른 확정 위치와 미확정 중복 후보는 보존한다',()=>{
+ let es=a('역활 역활',[{wrong:'역활',right:'역할',start:0,end:2},{wrong:'역활',right:'역할',start:3,end:5}]);assert.equal(es.length,2);assert.ok(es.every(e=>!e.overlap));
+ es=a('역활 역활',[{wrong:'역활',right:'역할'},{wrong:'역활',right:'역할'}]);assert.equal(es.length,2);assert.ok(es.every(e=>e.start===null&&e.status==='needs_review'));
+});

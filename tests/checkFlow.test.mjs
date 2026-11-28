@@ -30,3 +30,14 @@ test('부분 또는 교정틀림 판정의 제3 표현은 자동 적용하지 �
 test('인용에 후보 표현이 등장하지 않으면 일치 판정도 자동 적용하지 않는다',()=>{
  for(const evidence of [undefined,{candidateMentioned:false}]) assert.equal(applyVerifiedEdits('할수',[item],{a:{source:'nikl',found:true,verdict:'일치',officialRight:'할 수',evidence}})[0].status,'needs_review');
 });
+
+test('보호 구간은 공식 검증이 일치해도 자동 적용하지 않는다',()=>{
+ const v={source:'nikl',found:true,verdict:'일치',officialRight:'역할',evidence:{candidateMentioned:true}};
+ for(const text of ['“역활”','`역활`','https://example.com/역활','앞 “역활.']) {const start=text.indexOf('역활');const e={id:'a',wrong:'역활',right:'역할',start,end:start+2};assert.equal(applyVerifiedEdits(text,[e],{a:v})[0].status,'needs_review',text);}
+});
+test('직접 선택은 자동 판정이 덮어쓰지 않는다',()=>{
+ const text='“역활”',e={id:'a',wrong:'역활',right:'역할',start:1,end:3,manual:'apply'};assert.equal(applyVerifiedEdits(text,[e],{})[0].manual,'apply');
+});
+test('조사 앞 오타만 정확히 검증된 경우 자동 적용한다',()=>{
+ const text='설겆이를',e={id:'a',wrong:'설겆이',right:'설거지',start:0,end:3};const v={source:'nikl',found:true,verdict:'일치',officialRight:'설거지',evidence:{candidateMentioned:true}};assert.equal(applyVerifiedEdits(text,[e],{a:v})[0].status,'applied');
+});
