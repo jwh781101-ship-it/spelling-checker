@@ -16,25 +16,39 @@ export async function searchPendingEvidence(items, previous, options = {}) {
   const verify = options.verify || verifyInBatches;
   const results = {...previous};
   if (!items.length) return {results, failures:0};
-  options.onStage?.('nikl');
-  const official = await verify('nikl',items,{signal:options.signal});
-  if (options.signal?.aborted) throw new DOMException('검색 취소','AbortError');
-  const unresolved = []; let failures = 0;
-  for (const item of items) {
-    const matches=official.filter(v=>v && String(v.id)===String(item.id));
-    const v=matches.length===1 ? matches[0] : null;
-    if (!v || v.verificationFailed) { failures++; continue; }
-    if (v.source === 'none') unresolved.push(item); else results[item.id]={...v, additionalEvidenceComplete:true};
+  // 직전에 공식 검색은 끝났지만 웹 검색만 실패한 항목은 웹 단계부터 재시도합니다.
+  const unresolved = items.filter(item => previous?.[item.id]?.additionalOfficialNoMatch === true);
+  const officialItems = items.filter(item => previous?.[item.id]?.additionalOfficialNoMatch !== true);
+  let failures = 0;
+  if (officialItems.length) {
+    options.onStage?.('nikl');
+    const official = await verify('nikl',officialItems,{signal:options.signal});
+    if (options.signal?.aborted) throw new DOMException('검색 취소','AbortError');
+    for (const item of officialItems) {
+      const matches=official.filter(v=>v && String(v.id)===String(item.id));
+      const v=matches.length===1 ? matches[0] : null;
+      if (!v || v.verificationFailed) { failures++; continue; }
+      if (v.source === 'none') {
+        unresolved.push(item);
+        // 웹 실패 시 기존 표시를 보존하면서 공식 단계의 완료만 기억합니다.
+        results[item.id]={...(previous?.[item.id] || v),additionalOfficialNoMatch:true};
+      } else results[item.id]={...v,additionalEvidenceComplete:true};
+    }
   }
   if (unresolved.length) {
     options.onStage?.('web');
-    const web=await verify('web',unresolved,{signal:options.signal});
+    let web;
+    try {web=await verify('web',unresolved,{signal:options.signal});}
+    catch (error) {
+      if (options.signal?.aborted || error?.name === 'AbortError') throw error;
+      return {results,failures:failures+unresolved.length};
+    }
     if (options.signal?.aborted) throw new DOMException('검색 취소','AbortError');
     for (const item of unresolved) {
       const matches=web.filter(v=>v && String(v.id)===String(item.id));
       const v=matches.length===1 ? matches[0] : null;
       if (!v || v.verificationFailed) {failures++; continue;}
-      results[item.id]={...v, additionalEvidenceComplete:true};
+      results[item.id]={...v,additionalEvidenceComplete:true};
     }
   }
   return {results, failures};
