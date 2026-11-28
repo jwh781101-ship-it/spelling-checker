@@ -90,7 +90,7 @@ textarea::placeholder { color: var(--ink-faint); font-family: 'Noto Sans KR', sa
 .btn-refresh { font-size: 0.82rem; color: var(--accent); background: none; border: 2px solid var(--accent-light); border-radius: 20px; padding: 5px 14px; cursor: pointer; white-space: nowrap; flex-shrink: 0; font-weight: 600; }
 .tip-item { display: flex; gap: 8px; font-size: 0.92rem; color: var(--ink-light); margin-bottom: 10px; line-height: 1.7; font-weight: 500; }
 .tip-dot { color: var(--accent); flex-shrink: 0; margin-top: 2px; font-weight: 700; }
-.tips-src { font-size: 0.72rem; color: var(--ink-faint); margin-top: 10px; font-weight: 500; }
+.tips-src { font-size: 0.72rem; color: var(--ink-faint); margin-top: 10px; font-weight: 500; overflow-wrap: anywhere; word-break: keep-all; line-height: 1.6; }
 .btn-mode {
   flex: 1; padding: 12px;
   border-radius: 10px;
