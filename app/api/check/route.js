@@ -1,3 +1,17 @@
+// Content-Length만 신뢰하지 않고 실제 수신 바이트를 제한합니다.
+async function readBoundedJSON(request, maxBytes = 65536) {
+  const length = request.headers.get('content-length');
+  if (length && /^\d+$/.test(length) && Number(length) > maxBytes) return {error:'요청 본문이 너무 큽니다.',status:413};
+  if (!request.body) return {error:'요청 본문을 확인해 주세요.',status:400};
+  const reader = request.body.getReader(); const chunks = []; let size = 0;
+  try {
+    while (true) { const {done,value}=await reader.read(); if(done) break; size+=value.byteLength; if(size>maxBytes) { reader.cancel().catch(()=>{}); return {error:'요청 본문이 너무 큽니다.',status:413}; } chunks.push(value); }
+    const bytes=new Uint8Array(size); let offset=0; for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+    const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+    if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('invalid');
+    return {value};
+  } catch { return {error:'올바른 JSON 요청을 보내 주세요.',status:400}; }
+}
 import { SYSTEM_CHECK, SYSTEM_FAST_CHECK, SYSTEM_DICT } from '../../lib/prompts';
 import { isForeignOrigin, allowRequest } from '../../lib/guard';
 import { knowledgeForText, knowledgeSummary } from '../../lib/kornorms';
@@ -9,7 +23,9 @@ export async function POST(request) {
   try {
     if(isForeignOrigin(request))return Response.json({error:'허용되지 않은 요청입니다.'},{status:403});
     if(!allowRequest(request,'check'))return Response.json({error:'요청이 많습니다. 1분 후 다시 검사해 주세요.'},{status:429});
-    const {mode,text,contextBefore,contextAfter,profile='fast'}=await request.json();
+    const body=await readBoundedJSON(request); if(body.error)return Response.json({error:body.error},{status:body.status});
+    const {mode,text,contextBefore,contextAfter,profile='fast'}=body.value;
+    if((contextBefore!==undefined&&typeof contextBefore!=='string')||(contextAfter!==undefined&&typeof contextAfter!=='string'))return Response.json({error:'문맥 형식을 확인해 주세요.'},{status:400});
     if(mode==='check'&&!['fast','thorough'].includes(profile))return Response.json({error:'검사 방식을 확인해 주세요.'},{status:400});
     const fast=mode==='check'&&profile==='fast';
     if(!['check','dict'].includes(mode)||typeof text!=='string'||!text.trim())return Response.json({error:'검사할 글을 입력해 주세요.'},{status:400});
@@ -35,9 +51,11 @@ export async function POST(request) {
     const parsed=parseModelJSON((data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join(''));
     if(mode==='dict')return Response.json({text:JSON.stringify({...parsed,sourceType:'ai'}),stop:data.stop_reason});
     if(!Array.isArray(parsed.errors))return Response.json({error:'검사 결과 형식을 확인하지 못했습니다. 원문은 바꾸지 않았습니다.'},{status:502});
-    const candidates=(Array.isArray(parsed.errors)?parsed.errors:[]).slice(0,30).filter(e=>e&&e.confidence==='high'&&typeof e.wrong==='string'&&e.wrong.length<=120&&typeof e.right==='string'&&e.right.length<=150).map(e=>({wrong:e.wrong,right:e.right,start:e.start,end:e.end,anchorBefore:typeof e.anchorBefore==='string'?e.anchorBefore.slice(-40):'',anchorAfter:typeof e.anchorAfter==='string'?e.anchorAfter.slice(0,40):'',type:String(e.type||'맞춤법').slice(0,20),explain:String(e.explain||'').slice(0,500),rule:knowledge.ruleIds.includes(e.rule)?e.rule:'',context:String(e.context||'').slice(0,600),confidence:'high',status:'pending'}));
+    const validCandidates=parsed.errors.filter(e=>e&&e.confidence==='high'&&typeof e.wrong==='string'&&e.wrong.length<=120&&typeof e.right==='string'&&e.right.length<=150);
+    const truncated=validCandidates.length>30;
+    const candidates=validCandidates.slice(0,30).map(e=>({wrong:e.wrong,right:e.right,start:e.start,end:e.end,anchorBefore:typeof e.anchorBefore==='string'?e.anchorBefore.slice(-40):'',anchorAfter:typeof e.anchorAfter==='string'?e.anchorAfter.slice(0,40):'',type:String(e.type||'맞춤법').slice(0,20),explain:String(e.explain||'').slice(0,500),rule:knowledge.ruleIds.includes(e.rule)?e.rule:'',context:String(e.context||'').slice(0,600),confidence:'high',status:'pending'}));
     const errors=anchorEdits(text,candidates);
-    const result={originalText:text,correctedText:text,errors,summary:String(parsed.summary||'검증한 제안만 반영합니다.').slice(0,300),knowledge:{...knowledgeSummary(),retrievedRules:knowledge.ruleIds,retrievedCases:knowledge.caseIds}};
+    const result={originalText:text,correctedText:text,errors,truncated,summary:String(parsed.summary||'검증한 제안만 반영합니다.').slice(0,300),knowledge:{...knowledgeSummary(),retrievedRules:knowledge.ruleIds,retrievedCases:knowledge.caseIds}};
     return Response.json({text:JSON.stringify(result),stop:data.stop_reason});
   }catch{return Response.json({error:'검사를 완료하지 못했습니다. 원문은 바꾸지 않았습니다. 다시 시도해 주세요.'},{status:500});}
 }

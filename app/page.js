@@ -1,13 +1,15 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { tipsFor } from './data/tips';
-import { findQuickErrors } from './lib/quickCheck.mjs';
+import * as quickCheck from './lib/quickCheck.mjs';
+const { findQuickErrors } = quickCheck;
 import { confusables } from './data/confusables.mjs';
-import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
+import { anchorEdits, anchorChunkEdits, buildCorrection, contextOf, splitTextWithContext } from './lib/corrections.mjs';
 import EasyReview from './components/EasyReview';
 import MessageTemplates from './components/MessageTemplates';
 import { insertTemplate } from './lib/templateInsertion.mjs';
 import { callAI, verifyInBatches, missingVerification, applyVerifiedEdits } from './lib/checkFlow.mjs';
+import { pendingEvidenceItems, searchPendingEvidence } from './lib/moreEvidence.mjs';
 import './components/home-features.css';
 
 async function fetchRules(refs, signal) {
@@ -94,19 +96,43 @@ function findQuickSource(error) {
 }
 
 function countDuplicateQuickErrors(localErrors, aiErrors) {
-  return localErrors.filter(local => aiErrors.some(ai =>
-    Number.isInteger(ai.start) && Number.isInteger(ai.end) && ai.start === local.start && ai.end === local.end && ai.wrong === local.wrong && ai.right === local.right
-  )).length;
+  return localErrors.filter(local => aiErrors.some(ai => sameQuickAndAI(local, ai))).length;
+}
+
+function sameQuickAndAI(local, ai) {
+  if (!ai || !local || ai.overlap || !Number.isInteger(ai.start) || !Number.isInteger(ai.end) || ai.start < 0 || !Number.isInteger(local.start) || !Number.isInteger(local.end) || local.end !== local.start + local.wrong?.length || ai.start !== local.start || ai.end !== ai.start + ai.wrong?.length) return false;
+  if (ai.end === local.end && ai.wrong === local.wrong && ai.right === local.right) return true;
+  // AI가 조사까지 포함했어도 동일한 접미사를 그대로 보존한 경우만 같은 교정으로 묶습니다.
+  if (typeof ai.wrong !== 'string' || typeof ai.right !== 'string' || !ai.wrong.startsWith(local.wrong) || !ai.right.startsWith(local.right)) return false;
+  return ai.end > local.end && ai.wrong.slice(local.wrong.length) === ai.right.slice(local.right.length);
+}
+
+// 수동 선택은 확인 완료이며, 반영 여부는 실제 buildCorrection 결과를 따릅니다.
+function resultOverview(aiErrors, quickErrors, correction) {
+  const uniqueQuick = quickErrors.filter(local => !aiErrors.some(ai => sameQuickAndAI(local, ai)));
+  const appliedIds = new Set(correction.segments.filter(s => s.marked).map(s => s.id));
+  const needsReview = aiErrors.filter(e => !e.manual && !appliedIds.has(e.id) && e.status !== 'kept');
+  return { uniqueQuick, appliedIds, needsReview, suggested: aiErrors.length + uniqueQuick.length, applied: correction.appliedCount, review: needsReview.length + uniqueQuick.length };
 }
 
 function safeDisplayErrors(original, errors) {
   const localErrors = findQuickErrors(original);
   return errors.map(error => {
-    const local = localErrors.find(item => Number.isInteger(error.start) && Number.isInteger(error.end) &&
-      item.start === error.start && item.end === error.end && item.wrong === error.wrong && item.right === error.right);
+    const local = localErrors.find(item => sameQuickAndAI(item, error));
     const source = local && findQuickSource(local);
     return source ? {...error, explain:local.reason, reason:local.reason, officialQuickSource:source} : error;
   });
+}
+
+// main에는 보호 구간 API가 아직 없을 수 있어 병합 전에도 기존 검사를 유지합니다.
+function warnProtectedEdits(original, errors, api) {
+  const rangesFor = api['protected' + 'Ranges'];
+  const overlaps = api['overlapsProtected' + 'Range'];
+  if (typeof rangesFor !== 'function' || typeof overlaps !== 'function') return errors;
+  const ranges = rangesFor(original);
+  return errors.map(error => Number.isInteger(error.start) && Number.isInteger(error.end) && overlaps(ranges, error.start, error.end)
+    ? {...error, protectedWarning: true, explain: '인용·주소 등 원문 보존이 필요한 구간입니다. 직접 확인하세요. ' + (error.explain || error.reason || '')}
+    : error);
 }
 
 function verificationForDisplay(verification, hasOfficialQuickSource) {
@@ -121,6 +147,10 @@ export default function Home() {
   const [elapsedMs, setElapsedMs] = useState(null);
   const requestControllerRef = useRef(null);
   const retryBackupRef = useRef(null);
+  const additionalSearchRef = useRef(null);
+  const [pendingQuick, setPendingQuick] = useState(null);
+  const quickPromptRef = useRef(null);
+  const quickTriggerRef = useRef(null);
   const [result, setResult] = useState(null);
   const [quickActive, setQuickActive] = useState(false);
   const [showExpressionSearch, setShowExpressionSearch] = useState(false);
@@ -156,6 +186,9 @@ export default function Home() {
   const copySequenceRef = useRef(0);
 
   useEffect(() => () => { verifyRunRef.current++; requestControllerRef.current?.abort(); expressionRunRef.current++; expressionControllerRef.current?.abort(); }, []);
+
+  useEffect(() => { if (pendingQuick) quickPromptRef.current?.focus(); }, [pendingQuick]);
+  useEffect(() => { setPendingQuick(null); }, [text]);
 
   useEffect(() => {
     if (pendingTemplate !== null) {
@@ -196,10 +229,16 @@ export default function Home() {
     return true;
   }
 
-  function cancelInspection() {
+  function cancelInspection(isAdditionalSearch = false) {
     verifyRunRef.current++;
     requestControllerRef.current?.abort();
     setLoading(false); setProgress('');
+    if (isAdditionalSearch === true) {
+      additionalSearchRef.current = null;
+      setVerifyStage('done');
+      setErrorMsg({text:'추가 자료 검색을 취소했습니다. 기존 검사 결과와 검색 중 직접 선택한 내용은 유지됩니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
+      return;
+    }
     if (restorePreviousResult()) {
       setErrorMsg({text:'다시 검사를 취소해 이전 검사 결과와 선택을 복원했습니다. 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다.'});
       return;
@@ -234,8 +273,8 @@ export default function Home() {
       }));
       if (verifyRunRef.current !== runId) return;
       const candidates = parts.flatMap((p,i) => anchorEdits(chunks[i].text,p.errors||[]).map(e => ({...e,start:e.start===null?null:e.start+chunks[i].start,end:e.end===null?null:e.end+chunks[i].start})));
-      const errors = anchorEdits(t,candidates);
-      const parsed = {originalText:t,errors,profile,hasErrors:errors.length>0,overallComment:errors.length?'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.':'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.'};
+      const errors = anchorChunkEdits(t,candidates);
+      const parsed = {originalText:t,errors,profile,truncated:parts.some(p=>p.truncated===true),hasErrors:errors.length>0,overallComment:errors.length?'AI가 제안한 교정 항목입니다. 자료가 발견되어도 판단이 틀릴 수 있습니다.':'AI가 제안한 교정 항목이 없습니다. 결과가 정확하다는 보장은 아닙니다.'};
       setResult(parsed);
       if (!findQuickErrors(t).length) setTimeout(() => { if (verifyRunRef.current === runId) resultRef.current?.scrollIntoView({behavior:'smooth',block:'start'}); },100);
       if(!errors.length)setElapsedMs(Date.now()-startedAt);
@@ -291,6 +330,27 @@ export default function Home() {
     }
   }
 
+  // 이미 찾은 후보 중 확인이 필요한 것만 검색합니다. 사용자가 고른 수정은 바꾸지 않습니다.
+  async function searchUnresolvedEvidence() {
+    if (!result || loading || ['local','nikl','web'].includes(verifyStage)) return;
+    const original=result.originalText;
+    const items=pendingEvidenceItems(original,result.errors,verify);
+    if (!items.length) { setErrorMsg({text:'추가 검색할 미확인 제안이 없습니다.'}); return; }
+    requestControllerRef.current?.abort(); retryBackupRef.current=null;
+    const controller=new AbortController(); requestControllerRef.current=controller; additionalSearchRef.current=controller;
+    const runId=++verifyRunRef.current; setErrorMsg(null); setVerifyStage('nikl');
+    try {
+      const out=await searchPendingEvidence(items,verify,{signal:controller.signal,onStage:stage=>{if(verifyRunRef.current===runId)setVerifyStage(stage);}});
+      if(verifyRunRef.current!==runId)return;
+      setVerify(out.results); setVerifyStage('done');
+      setErrorMsg({text:out.failures ? '일부 자료 검색이 끝나지 않아 해당 항목은 이전 상태를 유지합니다. 기존 선택은 바뀌지 않았습니다.' : '확인이 필요한 제안의 자료 검색을 마쳤습니다. 기존 선택은 바뀌지 않았으니 자료와 문맥을 직접 확인해 주세요.'});
+    } catch(e) {
+      if(verifyRunRef.current===runId && e?.name!=='AbortError') {setVerifyStage('done');setErrorMsg({text:'자료 검색을 완료하지 못해 이전 결과와 선택을 유지합니다.'});}
+    } finally {
+      if (additionalSearchRef.current === controller) additionalSearchRef.current = null;
+    }
+  }
+
   function chooseCorrection(id, manual) {
     setCopied(false);
     setResult(prev => prev && ({ ...prev, errors: prev.errors.map(e => e.id === id ? { ...e, manual } : e) }));
@@ -337,6 +397,31 @@ export default function Home() {
     if (!Number.isInteger(error.start) || !Number.isInteger(error.end) || error.start < 0 || error.end <= error.start || text.slice(error.start,error.end) !== error.wrong) return;
     updateInput(text.slice(0,error.start) + error.right + text.slice(error.end));
     setErrorMsg({text:'글을 바꾸어 이전 검사 결과를 지웠습니다. 진행 중이었다면 검사를 중단했지만 이미 발생한 AI 이용 비용은 취소되지 않을 수 있습니다. 맞춤법 검사를 다시 눌러 주세요.'});
+  }
+
+  function requestQuick(error, trigger) {
+    if (result || retryBackupRef.current?.result) {
+      quickTriggerRef.current = trigger;
+      setPendingQuick({error, originalText:text});
+      return;
+    }
+    applyQuick(error);
+  }
+
+  function cancelQuick() {
+    setPendingQuick(null);
+    setTimeout(() => quickTriggerRef.current?.focus(), 0);
+  }
+
+  function confirmQuick() {
+    if (!pendingQuick) return;
+    const {error, originalText} = pendingQuick;
+    setPendingQuick(null);
+    if (text !== originalText || !Number.isInteger(error.start) || !Number.isInteger(error.end) || error.start < 0 || error.end <= error.start || text.slice(error.start, error.end) !== error.wrong) {
+      setErrorMsg({text:'글이 바뀌어 해당 위치를 다시 확인해야 합니다. 검사 결과를 확인해 주세요.'});
+      return;
+    }
+    applyQuick(error);
   }
 
   async function checkSpelling() { await checkSpellingDirect(); }
@@ -472,9 +557,12 @@ export default function Home() {
   }
 
   const correction = result ? buildCorrection(result.originalText, result.errors) : null;
-  const displayErrors = result ? safeDisplayErrors(result.originalText, result.errors) : [];
+  const displayErrors = result ? warnProtectedEdits(result.originalText, safeDisplayErrors(result.originalText, result.errors), quickCheck) : [];
   const quickErrors = quickActive ? findQuickErrors(text).map(error => ({...error, source:findQuickSource(error)})) : [];
   const currentQuickErrors = result?.originalText === text && mode === 'check' ? quickErrors : [];
+  const overview = result ? resultOverview(result.errors, currentQuickErrors, correction) : null;
+  const pendingEvidence = result ? pendingEvidenceItems(result.originalText, result.errors, verify) : [];
+  const visibleQuickErrors = overview ? overview.uniqueQuick : quickErrors;
   const duplicateQuickCount = result ? countDuplicateQuickErrors(currentQuickErrors, result.errors) : 0;
 
   useEffect(() => {
@@ -514,7 +602,7 @@ export default function Home() {
         </nav>
         {(showTemplates || showExpressionSearch) && (loading || ['local','nikl','web'].includes(verifyStage)) && <div className="notice-card" role="status">
           <p>{loading ? 'AI 검사 또는 사전 찾기가 진행 중입니다.' : '검사 결과를 자료와 대조 중입니다.'} 완료까지 시간이 걸릴 수 있습니다.</p>
-          <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
+          <button type="button" className="check-cancel" onClick={additionalSearchRef.current && additionalSearchRef.current === requestControllerRef.current ? () => cancelInspection(true) : cancelInspection}>검사 취소</button>
         </div>}
         {(showTemplates || showExpressionSearch) && !loading && errorMsg && <div className="notice-card" role="alert"><p>{errorMsg.text}</p><button type="button" className="check-cancel" onClick={closeTemplates}>글 검사로 돌아가기</button></div>}
         <div hidden={!showTemplates} className="phrase-panel">
@@ -595,10 +683,26 @@ export default function Home() {
 
 
 
-        {quickActive && mode === 'check' && <div className="result-card show quick-results" ref={resultRef} aria-live="polite">
-          <div className="score-banner"><div className="score-text"><h3>먼저 찾은 표현 {quickErrors.length}곳</h3><p>일부 표현만 찾은 참고 결과입니다. 직접 확인하고 바꿀 수 있습니다.</p></div></div>
-          <div className="errors-sec">{quickErrors.length === 0 ? <p>먼저 찾은 표현은 없어요. AI 검사 결과도 확인해 주세요.</p> : quickErrors.map((err, i) => <div className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div>{err.source && <p><a href={err.source.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.source.sourceName}</a></p>}<div className="accuracy-choice"><button type="button" onClick={() => applyQuick(err)}>이 위치만 바꾸기</button></div></div></div>)}</div>
+        {result && <nav className="result-overview" aria-label="검사 결과 요약" id="result-overview">
+          <a href="#result-suggestions" onClick={() => setReviewMode('all')}>제안 <strong>{overview.suggested}곳</strong></a>
+          <a href="#result-applied">반영 <strong>{overview.applied}곳</strong></a>
+          <a href={overview.review ? '#result-review-needed' : '#result-suggestions'} onClick={() => { setReviewMode('all'); if (overview.review) setTimeout(() => document.getElementById('result-review-needed')?.scrollIntoView({block:'start'}), 0); }}>확인 필요 <strong>{overview.review}곳</strong></a>
+          <p>제안은 AI와 빠른 결과를 합친 수이며, 확인 필요에는 직접 선택하지 않은 미확인 항목이 포함됩니다.</p>
+        </nav>}
+        {quickActive && mode === 'check' && (!result || visibleQuickErrors.length > 0) && <div className="result-card show quick-results" ref={resultRef} aria-live="polite" id={result && !result.errors.length ? 'result-suggestions' : undefined}>
+          <div className="score-banner"><div className="score-text"><h3>먼저 찾은 표현 {visibleQuickErrors.length}곳</h3><p>일부 표현만 찾은 참고 결과입니다. 직접 확인하고 바꿀 수 있습니다.</p></div></div>
+          <div className="errors-sec">{visibleQuickErrors.length === 0 ? <p>{duplicateQuickCount > 0 ? '먼저 찾은 표현은 중복 없이 아래 AI 결과에 함께 표시합니다.' : '먼저 찾은 표현은 없어요. AI 검사 결과도 확인해 주세요.'}</p> : visibleQuickErrors.map((err, i) => <div id={result && i === 0 ? 'result-review-needed' : undefined} className="error-item" key={`${err.start}-${err.end}-${i}`}><div className="err-num">{i+1}</div><div className="err-body"><div className="err-words"><span className="word-wrong">{err.wrong}</span> → <span className="word-right">{err.right}</span></div><p>위치: {Array.from(text.slice(0, err.start)).length + 1}~{Array.from(text.slice(0, err.end)).length}번째</p><div className="err-reason">{err.reason}</div>{err.source && <p><a href={err.source.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.source.sourceName}</a></p>}<div className="accuracy-choice"><button type="button" onClick={event => requestQuick(err, event.currentTarget)}>이 위치만 바꾸기</button></div></div></div>)}</div>
         </div>}
+
+        {pendingQuick && <section className="template-confirm" role="group" aria-labelledby="quick-confirm-title" aria-describedby="quick-confirm-description" ref={quickPromptRef} tabIndex={-1}>
+          <h3 id="quick-confirm-title">이 위치를 바꿀까요?</h3>
+          <p id="quick-confirm-description">이 위치를 바꾸면 기존 검사 결과와 직접 선택한 적용·원문 유지 내용이 지워집니다. 진행 중인 검사도 중단될 수 있습니다.</p>
+          <p>{pendingQuick.error.wrong} → {pendingQuick.error.right}</p>
+          <div className="template-confirm-actions">
+            <button type="button" onClick={cancelQuick}>취소</button>
+            <button type="button" onClick={confirmQuick}>확인하고 바꾸기</button>
+          </div>
+        </section>}
 
         {/* 로딩 */}
         {loading && (
@@ -624,21 +728,22 @@ export default function Home() {
 
         {/* 결과 */}
         {result && (
-          <div className="result-card show" ref={resultRef}>
+          <div className="result-card show" ref={resultRef} id={!result.errors.length && !visibleQuickErrors.length ? 'result-suggestions' : undefined}>
             <div className={`score-banner ${result.hasErrors ? 'has-errors' : 'perfect'}`}>
               <span className="score-emoji">{result.hasErrors ? '📌' : '🎉'}</span>
               <div className="score-text">
                 <h3>{result.hasErrors ? `AI 제안 ${result.errors.length}곳 · 적용 ${correction.appliedCount}곳` : 'AI 교정 제안이 없어요'}</h3>
                 <p>{result.overallComment}</p>
+                {result.truncated && <p role="status">후보가 많아 일부만 표시합니다. 글을 나누어 다시 검사해 주세요.</p>}
                 {!result.hasErrors && currentQuickErrors.length > 0 && <p>먼저 찾은 표현 {currentQuickErrors.length}곳은 위에서 확인해 주세요.</p>}
-                {duplicateQuickCount > 0 && <p>먼저 찾은 표현 중 {duplicateQuickCount}곳은 아래 AI 제안과 같은 내용입니다.</p>}
+                {duplicateQuickCount > 0 && <p>먼저 찾은 표현 중 {duplicateQuickCount}곳은 아래 AI 제안과 같은 내용입니다. 중복 없이 한 번만 표시합니다.</p>}
               </div>
             </div>
             {['local','nikl','web'].includes(verifyStage) && (
               <div className="verify-status">
                 <div className="spinner small"></div>
                 {verifyStage === 'local' ? '제공된 공식 자료로 독립 대조 중입니다. 실시간 웹 검색은 생략합니다.' : verifyStage === 'nikl' ? '국립국어원 자료로 한 번 더 확인하고 있어요' : '국립국어원에 없는 항목은 웹에서 찾고 있어요'}
-                <button type="button" className="check-cancel" onClick={cancelInspection}>검사 취소</button>
+                <button type="button" className="check-cancel" onClick={additionalSearchRef.current && additionalSearchRef.current === requestControllerRef.current ? () => cancelInspection(true) : cancelInspection}>검사 취소</button>
               </div>
             )}
             {verifyStage === 'done' && (
@@ -647,20 +752,22 @@ export default function Home() {
               </div>
             )}
             {elapsedMs!==null && <p className="check-time" role="status">{result.profile==='full'?'AI 검사와 자료 대조 종료':'자료 검색 포함 검사 종료'} · {(elapsedMs/1000).toFixed(1)}초{result.profile==='full'?' · 실시간 웹 검색 생략':''}</p>}
-            {verifyStage==='done' && result.profile==='full' && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문을 AI에 다시 보내고 웹 자료도 찾습니다. API 이용 비용이 추가로 발생할 수 있고 시간이 더 걸립니다. 직접 선택한 적용·유지 내용은 초기화됩니다.</p></div>}
-            <div className="corrected-sec">
+            {verifyStage==='cancelled' && <div className="check-more" role="status"><p>자료 대조가 취소되어 완료되지 않았습니다. 현재 결과와 직접 선택한 내용은 유지됩니다. 미확인 제안만 추가 검색하거나 원문 전체를 다시 검사할 수 있습니다.</p></div>}
+            {['done','cancelled'].includes(verifyStage) && pendingEvidence.length > 0 && <div className="check-more"><button type="button" onClick={searchUnresolvedEvidence}>확인이 필요한 {pendingEvidence.length}곳만 추가 검색</button><p>이미 찾은 AI 제안만 다시 자료와 대조합니다. 원문 전체를 다시 검사하지 않으며, 기존 선택은 유지합니다. 위치가 불명확하거나 겹친 항목과 직접 선택한 항목은 검색하지 않습니다. 추가 AI 비용과 시간이 들 수 있습니다.</p></div>}
+            {(['done','cancelled'].includes(verifyStage) && (result.profile==='full' || verifyStage==='cancelled')) && <div className="check-more"><button type="button" onClick={()=>checkSpellingDirect(result.originalText,'thorough')}>자료 검색까지 다시 검사</button><p>원문을 AI에 다시 보내고 웹 자료도 찾습니다. API 이용 비용이 추가로 발생할 수 있고 시간이 더 걸립니다. 직접 선택한 적용·유지 내용은 초기화됩니다. 재검사를 취소하거나 실패하면 이전 결과와 선택이 복원됩니다.</p></div>}
+            <div className="corrected-sec" id="result-applied" tabIndex={-1}>
               <div className="sec-label">현재 반영된 글</div><p>자동 반영되지 않은 제안은 원문으로 남아 있습니다. 복사 전에 수정 내역을 확인해 주세요.</p>
               <div className="corrected-text">{correction.segments.map((segment, i) => segment.marked ? <mark key={segment.id || i}>{segment.text}</mark> : <span key={i}>{segment.text}</span>)}</div>
             </div>
             {result.errors?.length > 0 && (
-              <div className="errors-sec">
+              <div className="errors-sec" id="result-suggestions" tabIndex={-1}>
                 <div className="sec-label" style={{marginBottom:'12px'}}>수정 내역</div>
                 <div className="review-view-switch" role="group" aria-label="수정 확인 방식">
                   <button type="button" aria-pressed={reviewMode === 'all'} onClick={() => setReviewMode('all')}>전체 목록</button>
                   <button type="button" aria-pressed={reviewMode === 'simple'} onClick={() => setReviewMode('simple')}>하나씩 크게 확인</button>
                 </div>
                 {reviewMode === 'simple' ? <EasyReview original={result.originalText} errors={displayErrors} verify={verify} verifyStage={verifyStage} onChoose={chooseCorrection} renderDetails={renderEvidence} /> : displayErrors.map((err, i) => (
-                  <div key={err.id} className="error-item" style={{animationDelay: i*0.05+'s'}}>
+                  <div key={err.id} id={!overview.uniqueQuick.length && overview.needsReview[0]?.id === err.id ? 'result-review-needed' : undefined} className="error-item" style={{animationDelay: i*0.05+'s'}}> 
                     <div className="err-num">{i+1}</div>
                     <div className="err-body">
                       <div className="err-words">
@@ -670,15 +777,15 @@ export default function Home() {
                         <span className="err-type">{err.type}</span>
                       </div>
                       {err.aiRight && <div className="err-override">AI의 공식 자료 대조 결과 제안: {err.aiRight} → {err.right}. 자료 발견이 정답을 보장하지는 않습니다.</div>}
-                      <div className="err-reason">{err.explain || err.reason}</div>
+                      <div className={`err-reason${err.protectedWarning ? ' protected-warning' : ''}`}>{err.explain || err.reason}</div>
                       {err.officialQuickSource && <p><a href={err.officialQuickSource.sourceUrl} target="_blank" rel="noopener noreferrer">관련 자료 보기: {err.officialQuickSource.sourceName}</a> (별도 참고 자료)</p>}
                       {err.example && <div className="err-example">예) {err.example}</div>}
                       <p>{err.manual === 'apply' ? '직접 적용 선택' : err.manual === 'keep' ? '직접 원문 유지 선택' : err.status === 'applied' ? 'AI의 공식 자료 대조 결과를 적용했어요' : err.status === 'pending' ? '자료 대조 중 · 원문 유지' : err.status === 'kept' && verify[err.id]?.source === 'nikl' && verify[err.id]?.verdict === '둘다가능' ? '원문도 허용되어 유지' : err.status === 'kept' ? '원문 유지' : '자료 또는 적용 판단 확인 필요 · 원문 유지'}</p>
                       {['부분','AI교정틀림'].includes(verify[err.id]?.verdict) && <p role="status">AI의 자료 대조 판단이 최초 제안과 다릅니다. 최초 제안: {err.right} · 대조 대안: {verify[err.id]?.officialRight || '확인 불가'}. 자동 적용하지 않았으니 자료와 문맥을 확인해 주세요.</p>}
                       {(err.start === null || err.overlap) && <p>위치가 모호하거나 다른 제안과 겹쳐 적용할 수 없어요.</p>}
-                      <div className="accuracy-choice">
-                        <button type="button" disabled={err.start === null || err.overlap} aria-pressed={err.manual === 'apply'} onClick={() => chooseCorrection(err.id, 'apply')}>이 교정 적용</button>
-                        <button type="button" aria-pressed={err.manual === 'keep'} onClick={() => chooseCorrection(err.id, 'keep')}>원문 유지</button>
+                      <div className="accuracy-choice" role="group" aria-label={`${i + 1}번 수정 선택`}>
+                        <button type="button" disabled={err.start === null || err.overlap} aria-pressed={overview.appliedIds.has(err.id)} onClick={() => chooseCorrection(err.id, 'apply')}>이 교정 적용{overview.appliedIds.has(err.id) ? ' · 선택됨' : ''}</button>
+                        <button type="button" aria-pressed={!overview.appliedIds.has(err.id)} onClick={() => chooseCorrection(err.id, 'keep')}>원문 유지{!overview.appliedIds.has(err.id) ? ' · 선택됨' : ''}</button>
                       </div>
                       <details className="review-evidence">
                         <summary>근거와 자료 대조 자세히 보기</summary>

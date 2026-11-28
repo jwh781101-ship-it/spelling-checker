@@ -1,3 +1,17 @@
+// Content-Length만 신뢰하지 않고 실제 수신 바이트를 제한합니다.
+async function readBoundedJSON(request, maxBytes = 65536) {
+  const length = request.headers.get('content-length');
+  if (length && /^\d+$/.test(length) && Number(length) > maxBytes) return {error:'요청 본문이 너무 큽니다.',status:413};
+  if (!request.body) return {error:'요청 본문을 확인해 주세요.',status:400};
+  const reader = request.body.getReader(); const chunks = []; let size = 0;
+  try {
+    while (true) { const {done,value}=await reader.read(); if(done) break; size+=value.byteLength; if(size>maxBytes) { reader.cancel().catch(()=>{}); return {error:'요청 본문이 너무 큽니다.',status:413}; } chunks.push(value); }
+    const bytes=new Uint8Array(size); let offset=0; for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
+    const value=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+    if(!value || typeof value!=='object' || Array.isArray(value)) throw new Error('invalid');
+    return {value};
+  } catch { return {error:'올바른 JSON 요청을 보내 주세요.',status:400}; }
+}
 // 조항 ID만으로 검증 성공 처리하지 않습니다. 실제 인용·출처와 문맥 판단이 필요합니다.
 import { knowledgeForItem, refToId, getRule, getCase, publicRule, quoteInRule, quoteInCase } from '../../lib/kornorms';
 import { isForeignOrigin, allowRequest } from '../../lib/guard';
@@ -37,8 +51,17 @@ export async function POST(request){
   try{
     if(isForeignOrigin(request))return Response.json({error:'허용되지 않은 요청입니다.'},{status:403});
     if(!allowRequest(request,'verify',40))return Response.json({error:'검증 요청이 많습니다. 잠시 후 다시 검사해 주세요.'},{status:429});
-    const {stage,items}=await request.json();
-    if(!Array.isArray(items)||!items.length)return Response.json({items:[]});
+    const body=await readBoundedJSON(request); if(body.error)return Response.json({error:body.error},{status:body.status});
+    const {stage,items}=body.value;
+    if(!['local','nikl','web'].includes(stage))return Response.json({error:'검증 단계를 확인해 주세요.'},{status:400});
+    if(!Array.isArray(items))return Response.json({error:'교정 항목을 확인해 주세요.'},{status:400});
+    if(!items.length)return Response.json({items:[]});
+    const ids=new Set();
+    for(const x of items){
+      if(!x||typeof x!=='object'||Array.isArray(x)||!((typeof x.id==='string'&&x.id.trim().length>0&&x.id.length<=100)||(Number.isSafeInteger(x.id)&&x.id>=0))||ids.has(String(x.id)))return Response.json({error:'교정 항목 ID를 확인해 주세요.'},{status:400});
+      ids.add(String(x.id));
+      if((x.context!==undefined&&typeof x.context!=='string')||(x.rule!==undefined&&typeof x.rule!=='string'))return Response.json({error:'교정 항목의 형식을 확인해 주세요.'},{status:400});
+    }
     if(items.length>10||items.some(x=>!x||typeof x.wrong!=='string'||typeof x.right!=='string'||x.wrong.length>120||x.right.length>150))return Response.json({error:'교정 항목의 형식이나 길이를 확인해 주세요.'},{status:400});
     if(!process.env.ANTHROPIC_API_KEY)return Response.json({error:'AI 서비스 설정을 확인해 주세요.'},{status:503});
     const list=items.map(x=>({id:x.id,wrong:x.wrong,right:x.right,context:String(x.context||'').slice(0,600),rule:String(x.rule||'').slice(0,60)}));

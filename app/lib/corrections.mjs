@@ -1,7 +1,14 @@
 // All positions are UTF-16 offsets in the unchanged original string.
 const valid = (text, e) => Number.isInteger(e.start) && Number.isInteger(e.end) && e.start >= 0 && e.end > e.start && e.end <= text.length && text.slice(e.start, e.end) === e.wrong;
 
+// 일반 교정은 원문 검색으로 위치를 복구하고, 청크 결과는 지정된 위치만 검증한다.
 export function anchorEdits(original, candidates = []) {
+  return anchorCandidates(original, candidates, false);
+}
+export function anchorChunkEdits(original, candidates = []) {
+  return anchorCandidates(original, candidates, true);
+}
+function anchorCandidates(original, candidates, strictPositions) {
   original = String(original ?? '');
   const errors = [];
   for (const candidate of Array.isArray(candidates) ? candidates : []) {
@@ -10,8 +17,8 @@ export function anchorEdits(original, candidates = []) {
     const before = typeof e.anchorBefore === 'string' ? e.anchorBefore : (typeof e.before === 'string' ? e.before : '');
     const after = typeof e.anchorAfter === 'string' ? e.anchorAfter : (typeof e.after === 'string' ? e.after : '');
     const anchorsMatch = i => (!before || original.slice(Math.max(0, i - before.length), i) === before) && (!after || original.slice(i + e.wrong.length, i + e.wrong.length + after.length) === after);
-    let start = valid(original, e) && anchorsMatch(e.start) ? e.start : -1;
-    if (start < 0) {
+    let start = valid(original, e) && (strictPositions ? !e.locationUnresolved : anchorsMatch(e.start)) ? e.start : -1;
+    if (start < 0 && !strictPositions) {
       const occurrences = [];
       for (let i = original.indexOf(e.wrong); i !== -1; i = original.indexOf(e.wrong, i + 1)) occurrences.push(i);
       const matched = occurrences.filter(anchorsMatch);
@@ -21,6 +28,9 @@ export function anchorEdits(original, candidates = []) {
     }
     e.start = start < 0 ? null : start;
     e.end = start < 0 ? null : start + e.wrong.length;
+    if (strictPositions && start < 0) e.locationUnresolved = true;
+    // 위치가 확정된 동일 후보만 합친다. 위치 미확정이나 다른 제안은 보류 대상으로 남긴다.
+    if (start >= 0 && errors.some(existing => existing.start === e.start && existing.end === e.end && existing.wrong === e.wrong && existing.right === e.right)) continue;
     // 다음 처리 단계에는 AI가 쓴 단서가 아니라 확인된 원문의 단서를 전달합니다.
     if (start >= 0) {
       e.anchorBefore = original.slice(Math.max(0, start - 20), start);

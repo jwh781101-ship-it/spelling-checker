@@ -14,6 +14,7 @@ function harness(initial, previous = null) {
     const callAI=(...args)=>{state.call=args; return pending};
     const splitTextWithContext=t=>[{text:t,start:0}];
     const anchorEdits=(t,e)=>e;
+    const anchorChunkEdits=(t,e)=>e;
     const findQuickErrors=t=>t.includes('몇일') ? [{wrong:'몇일',right:'며칠',start:t.indexOf('몇일'),end:t.indexOf('몇일')+2}] : [];
     const runVerify=(t,p,id,o)=>{state.verification=o};
     const setTimeout=fn=>{(state.timers ||= []).push(fn)};
@@ -217,11 +218,13 @@ test('며칠의 잘못된 AI 어원 설명은 정확한 위치·표기 일치 �
   const confRaw=readFileSync(new URL('../app/data/confusables.mjs',import.meta.url),'utf8');
   const confusables=new Function(confRaw.replace('export const confusables','const confusables')+';return confusables')();
   const quickRaw=readFileSync(new URL('../app/lib/quickCheck.mjs',import.meta.url),'utf8');
-  const findQuickErrors=new Function(quickRaw.replace('export const QUICK_RULES','const QUICK_RULES').replace('export function findQuickErrors','function findQuickErrors')+';return findQuickErrors')();
+  const findQuickErrors=new Function(quickRaw.replaceAll('export ', '')+';return findQuickErrors')();
   const lookupSource=section('function findQuickSource(', 'function countDuplicateQuickErrors(');
   const findQuickSource=new Function('confusables',lookupSource+';return findQuickSource')(confusables);
   const helper=section('function safeDisplayErrors(', 'export default function Home()');
-  const safe=new Function('findQuickErrors','findQuickSource',helper+';return safeDisplayErrors')(findQuickErrors,findQuickSource);
+  const sameSource=section('function sameQuickAndAI(', '// 수동 선택은');
+  const sameQuickAndAI=new Function(sameSource+';return sameQuickAndAI')();
+  const safe=new Function('findQuickErrors','findQuickSource','sameQuickAndAI',helper+';return safeDisplayErrors')(findQuickErrors,findQuickSource,sameQuickAndAI);
   const original='오늘은 몇일인가요?';
   const input={id:'a',start:4,end:6,wrong:'몇일',right:'며칠',explain:'몇과 일의 결합으로 발음이 변해 며칠입니다.',reason:'잘못된 AI 설명',status:'needs_review',manual:'keep'};
   const out=safe(original,[input])[0];
@@ -292,4 +295,12 @@ test('표현 메뉴는 처음에 전체 목록을 보이고 검색 후 전체로
  const search=section('  async function searchExpressions(', '  function updateInput(');
  assert.match(search,/if \(!q\) \{ setExpressionResults\(null\); setExpressionStatus\(''\); return; \}/);
  assert.doesNotMatch(search,/callAI|checkSpellingDirect|setText/);
+});
+
+test('조사를 포함한 같은 교정만 빠른 후보와 합친다',()=>{
+ const body=section('function sameQuickAndAI(', '// 수동 선택은'); const same=new Function(body+';return sameQuickAndAI')();
+ const local={start:0,end:3,wrong:'오랫만',right:'오랜만'};
+ assert.equal(same(local,{start:0,end:4,wrong:'오랫만에',right:'오랜만에'}),true);
+ assert.equal(same(local,{start:0,end:4,wrong:'오랫만에',right:'오랜만으로'}),false);
+ assert.equal(same(local,{start:1,end:5,wrong:'오랫만에',right:'오랜만에'}),false);
 });
