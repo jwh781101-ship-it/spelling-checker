@@ -610,7 +610,7 @@ export default function Home() {
         </div>}
         {(showTemplates || showExpressionSearch) && !loading && errorMsg && <div className="notice-card" role="alert"><p>{errorMsg.text}</p><button type="button" className="check-cancel" onClick={closeTemplates}>글 검사로 돌아가기</button></div>}
         <div hidden={!showTemplates} className="phrase-panel">
-          <p className="phrase-panel-note">예문 선택·편집·복사는 AI를 호출하지 않습니다. 검사창에 넣어도 자동 검사되지 않으며, 검사 시 외부 AI 서비스로 전송됩니다. 개인정보·민감정보는 입력하지 마세요.</p>
+          <p className="phrase-panel-note">예문은 AI 없이 이용합니다. 검사는 직접 시작하며, 외부 AI로 전송됩니다. 개인정보·민감정보는 입력하지 마세요.</p>
           {pendingTemplate !== null && <section className="template-confirm" role="alert" tabIndex={-1} ref={templatePromptRef} aria-label="기존 글 보존 확인">
             <h3>입력해 둔 글이 있습니다</h3>
             <p>선택한 문구를 어떻게 넣을까요? 글을 바꾸거나 붙이면 이전 검사 결과는 초기화됩니다.</p>
