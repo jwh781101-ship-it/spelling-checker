@@ -23,8 +23,8 @@ test('저장 건수는 제목 옆에 있고 삭제는 항목이 있을 때 제�
 });
 test('팁 출처와 경조사 개인정보·AI·직접 발송 안내를 유지한다',()=>{
  assert.match(css,/\.tips-src \{[^}]*overflow-wrap: anywhere; word-break: keep-all/);
- assert.match(page,/예문 선택·편집·복사는 AI를 호출하지 않습니다/);
- assert.match(page,/자동 검사되지 않으며, 검사 시 외부 AI 서비스로 전송됩니다/);
+ assert.match(page,/예문은 AI 없이 이용합니다/);
+ assert.match(page,/검사는 직접 시작하며, 외부 AI로 전송됩니다/);
  assert.match(page,/개인정보·민감정보는 입력하지 마세요/);
  assert.match(templates,/자동 발송되지 않습니다/);
  assert.match(templates,/직접 전송해 주세요/);
