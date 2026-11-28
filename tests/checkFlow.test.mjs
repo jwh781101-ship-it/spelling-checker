@@ -41,3 +41,15 @@ test('직접 선택은 자동 판정이 덮어쓰지 않는다',()=>{
 test('조사 앞 오타만 정확히 검증된 경우 자동 적용한다',()=>{
  const text='설겆이를',e={id:'a',wrong:'설겆이',right:'설거지',start:0,end:3};const v={source:'nikl',found:true,verdict:'일치',officialRight:'설거지',evidence:{candidateMentioned:true}};assert.equal(applyVerifiedEdits(text,[e],{a:v})[0].status,'applied');
 });
+
+test('청크 위치 출처 불명 표식은 공식 자료 일치에도 자동 적용하지 않는다',()=>{
+ const e={id:'a',wrong:'역활',right:'역할',start:0,end:2,locationUnresolved:true,status:'needs_review'};
+ const v={source:'nikl',found:true,verdict:'일치',officialRight:'역할',evidence:{candidateMentioned:true}};
+ assert.equal(applyVerifiedEdits('역활',[e],{a:v})[0].status,'needs_review');
+ assert.equal(applyVerifiedEdits('역활',[{...e,start:null,end:null}],{a:v})[0].status,'needs_review');
+});
+test('출처 불명 표식이 없는 정상 needs_review 항목은 공식 일치 시 기존대로 처리한다',()=>{
+ const e={id:'a',wrong:'역활',right:'역할',start:0,end:2,status:'needs_review'};
+ const v={source:'nikl',found:true,verdict:'일치',officialRight:'역할',evidence:{candidateMentioned:true}};
+ assert.equal(applyVerifiedEdits('역활',[e],{a:v})[0].status,'applied');
+});

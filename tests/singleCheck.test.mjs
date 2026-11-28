@@ -14,6 +14,7 @@ function harness(initial, previous = null) {
     const callAI=(...args)=>{state.call=args; return pending};
     const splitTextWithContext=t=>[{text:t,start:0}];
     const anchorEdits=(t,e)=>e;
+    const anchorChunkEdits=(t,e)=>e;
     const findQuickErrors=t=>t.includes('몇일') ? [{wrong:'몇일',right:'며칠',start:t.indexOf('몇일'),end:t.indexOf('몇일')+2}] : [];
     const runVerify=(t,p,id,o)=>{state.verification=o};
     const setTimeout=fn=>{(state.timers ||= []).push(fn)};

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { anchorEdits, buildCorrection, contextOf, splitTextWithContext } from '../app/lib/corrections.mjs';
+import { anchorEdits, anchorChunkEdits, buildCorrection, contextOf, splitTextWithContext } from '../app/lib/corrections.mjs';
 const a = (s, e) => anchorEdits(s, e);
 const b = (s, e) => buildCorrection(s, e);
 test('유일한 위치 복구',()=>assert.equal(a('가 나',[{wrong:'나',right:'너'}])[0].start,2));
@@ -75,4 +75,31 @@ test('같은 위치의 다른 제안과 부분 중첩은 제거하지 않고 모
 test('반복 원문의 서로 다른 확정 위치와 미확정 중복 후보는 보존한다',()=>{
  let es=a('역활 역활',[{wrong:'역활',right:'역할',start:0,end:2},{wrong:'역활',right:'역할',start:3,end:5}]);assert.equal(es.length,2);assert.ok(es.every(e=>!e.overlap));
  es=a('역활 역활',[{wrong:'역활',right:'역할'},{wrong:'역활',right:'역할'}]);assert.equal(es.length,2);assert.ok(es.every(e=>e.start===null&&e.status==='needs_review'));
+});
+
+test('청크에 없는 후보는 다른 청크 또는 앞뒤 문맥에만 있어도 전체에서 재고정하지 않는다',()=>{
+ const original='역활은 앞 문맥이다. 정상인 청크다.';const chunk='정상인 청크다.';
+ const [local]=anchorEdits(chunk,[{wrong:'역활',right:'역할'}]);assert.equal(local.start,null);
+ const [global]=anchorChunkEdits(original,[local]);assert.equal(global.start,null);assert.equal(global.end,null);assert.equal(global.locationUnresolved,true);assert.equal(global.status,'needs_review');
+ assert.equal(buildCorrection(original,[{...global,status:'applied'}]).text,original);
+});
+test('반복 청크의 미확정 후보는 전체 원문에 유일하거나 여러 번 있어도 미확정이다',()=>{
+ for(const original of ['앞 역활 끝','역활 앞 역활 끝']) {
+  const e={wrong:'역활',right:'역할',start:null,end:null,anchorBefore:'앞 ',status:'needs_review'};
+  const [r]=anchorChunkEdits(original,[e]);assert.equal(r.start,null);assert.equal(r.end,null);assert.equal(r.locationUnresolved,true);
+ }
+});
+test('지정된 전역 위치가 틀리면 다른 곳에서 찾지 않으며 일치하면 앵커가 달라도 유지한다',()=>{
+ const original='앞 역활 뒤 역활';
+ const [bad]=anchorChunkEdits(original,[{wrong:'역활',right:'역할',start:0,end:2}]);assert.equal(bad.start,null);assert.equal(bad.end,null);assert.equal(bad.locationUnresolved,true);
+ const [good]=anchorChunkEdits(original,[{wrong:'역활',right:'역할',start:2,end:4,anchorBefore:'틀린 단서'}]);assert.equal(good.start,2);assert.equal(good.end,4);assert.equal(good.anchorBefore,'앞 ');
+});
+test('청크 위치 고정은 완전 중복만 제거하고 다른 겹침은 보류한다',()=>{
+ const original='역활과';const c={wrong:'역활',right:'역할',start:0,end:2};
+ let es=anchorChunkEdits(original,[c,{...c},{...c,right:'구실'}]);assert.equal(es.length,2);assert.ok(es.every(e=>e.overlap&&e.status==='needs_review'));
+ es=anchorChunkEdits(original,[c,{...c}]);assert.equal(es.length,1);assert.equal(es[0].status,'pending');assert.equal(buildCorrection(original,[{...es[0],status:'applied'}]).text,'역할과');
+});
+test('일반 위치 고정은 기존대로 검색 복구하고 청크 출처 불명 표식은 재고정을 막는다',()=>{
+ assert.equal(anchorEdits('앞 역활',[{wrong:'역활',right:'역할'}])[0].start,2);
+ const [e]=anchorChunkEdits('앞 역활',[{wrong:'역활',right:'역할',start:2,end:4,locationUnresolved:true}]);assert.equal(e.start,null);assert.equal(e.end,null);
 });

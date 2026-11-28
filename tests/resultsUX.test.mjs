@@ -107,3 +107,34 @@ test('서버 text 내부의 truncation 신호를 읽고 일부 결과임을 안�
   assert.match(page,/truncated:parts\.some\(p=>p\.truncated===true\)/);
   assert.match(page,/result\.truncated && <p role="status">후보가 많아 일부만 표시합니다\. 글을 나누어 다시 검사해 주세요/);
 });
+test('청크에서 위치 미확정인 제안을 다른 청크의 원문에서 다시 찾지 않는다', async () => {
+  const {anchorEdits,anchorChunkEdits}=await import('../app/lib/corrections.mjs');
+  const body=page.slice(page.indexOf('  async function checkSpellingDirect('),page.indexOf('  async function runVerify('));
+  const make=new Function('anchorEdits','anchorChunkEdits',`
+    const text='가나다 몇일',result=null,verify={},verifyStage='',aiRules=[],elapsedMs=null;
+    const retryBackupRef={current:null},requestControllerRef={current:null},verifyRunRef={current:0},resultRef={current:null};let state={};
+    const splitTextWithContext=()=>[{text:'가나다',start:0},{text:' 몇일',start:3}];
+    const callAI=async(mode,t)=>({errors:t==='가나다'?[{wrong:'몇일',right:'며칠'}]:[]});
+    const setErrorMsg=()=>{},setQuickActive=()=>{},setElapsedMs=()=>{},setVerify=()=>{},setVerifyStage=()=>{},setAiRules=()=>{},setLoading=()=>{},setDictResult=()=>{},setProgress=()=>{};
+    const setResult=v=>state.result=v,findQuickErrors=()=>[],runVerify=()=>{},setTimeout=()=>{},friendlyError=()=>'',restorePreviousResult=()=>false;
+    __BODY__
+    return {checkSpellingDirect,state};
+  `.replace('__BODY__',body));
+  const h=make(anchorEdits,anchorChunkEdits);await h.checkSpellingDirect();
+  assert.equal(h.state.result.errors[0].start,null);assert.equal(h.state.result.errors[0].end,null);
+  assert.match(page,/const errors = anchorChunkEdits\(t,candidates\)/);
+});
+test('최초 대조 취소 결과는 추가 검색과 전체 재검사로 안전하게 재개할 수 있다', async () => {
+  const {pendingEvidenceItems}=await import('../app/lib/moreEvidence.mjs');
+  const original='몇일 몇일';
+  const errors=[{id:'a',start:0,end:2,wrong:'몇일',right:'며칠',status:'needs_review'},{id:'b',start:3,end:5,wrong:'몇일',right:'며칠',status:'needs_review',manual:'keep'},{id:'c',start:null,end:null,wrong:'몇일',right:'며칠',status:'needs_review'},{id:'d',start:3,end:5,wrong:'몇일',right:'며칠',status:'needs_review',overlap:true}];
+  const verify=Object.fromEntries(errors.map(e=>[e.id,{verificationFailed:true}]));
+  assert.deepEqual(pendingEvidenceItems(original,errors,verify).map(e=>e.id),['a']);
+  assert.match(page,/verifyStage==='cancelled' && <div className="check-more" role="status"/);
+  assert.match(page,/\['done','cancelled'\]\.includes\(verifyStage\) && pendingEvidence\.length > 0/);
+  assert.match(page,/result\.profile==='full' \|\| verifyStage==='cancelled'/);
+  assert.match(page,/재검사를 취소하거나 실패하면 이전 결과와 선택이 복원됩니다/);
+  const search=page.slice(page.indexOf('  async function searchUnresolvedEvidence('),page.indexOf('  function chooseCorrection('));
+  assert.match(search,/pendingEvidenceItems\(original,result\.errors,verify\)/);
+  assert.doesNotMatch(search,/setResult\(/);
+});

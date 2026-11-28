@@ -31,3 +31,11 @@ test('추가 검색을 완료한 항목은 근거 미발견이어도 다시 검�
  assert.deepEqual(pendingEvidenceItems(original,errs,r.results).map(x=>x.id),['b']);
  assert.equal(errs[0].status,'needs_review');
 });
+
+test('웹 검색만 실패하면 공식 검색을 반복하지 않고 웹만 재시도한다',async()=>{
+ const calls=[];const prev={a:{id:'a',source:'none',note:'이전'}};
+ const first=await searchPendingEvidence([errs[0]],prev,{verify:async(stage,items)=>{calls.push(stage);return items.map(x=>({id:x.id,source:'none',verificationFailed:stage==='web'}));}});
+ assert.deepEqual(calls,['nikl','web']); assert.equal(first.failures,1); assert.equal(first.results.a.note,'이전'); assert.equal(first.results.a.additionalOfficialNoMatch,true);
+ const second=await searchPendingEvidence([errs[0]],first.results,{verify:async(stage,items)=>{calls.push(stage);return items.map(x=>({id:x.id,source:'none'}));}});
+ assert.deepEqual(calls,['nikl','web','web']);assert.equal(second.results.a.additionalEvidenceComplete,true);assert.equal(second.failures,0);
+});
